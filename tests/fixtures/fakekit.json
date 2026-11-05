@@ -1,0 +1,49 @@
+{
+  "kit": "fakekit",
+  "package": "fakekit",
+  "field": "test",
+  "about": "A kit for the tests.",
+  "repository": "https://example.com/fakekit",
+  "needs": [],
+  "tools": [
+    {
+      "name": "fake_make",
+      "title": "Fake make",
+      "description": "Makes a fake folder.",
+      "args": ["{url}"],
+      "out": { "flag": "--out", "name": "fakekit-{host}" },
+      "uses": { "--with": "otherkit" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "An address." },
+        "deep": { "type": "boolean", "flag": "--deep", "description": "A flag passed when true." },
+        "plain": { "type": "boolean", "flag": "--no-plain", "when": false, "description": "A flag passed when false." },
+        "sizes": { "type": "list", "flag": "--sizes", "description": "Joined with commas." },
+        "page": { "type": "repeat", "flag": "--page", "description": "Repeated." },
+        "theme": { "type": "enum", "flag": "--theme", "values": ["light", "dark"], "description": "An enum." },
+        "count": { "type": "integer", "flag": "--count", "min": 1, "max": 5, "description": "An integer." }
+      },
+      "docs": ["REPORT.md", "MISSING.md"]
+    },
+    {
+      "name": "fake_check",
+      "title": "Fake check",
+      "description": "Passes or fails a check.",
+      "args": ["check", "{url}"],
+      "check": true,
+      "readOnly": true,
+      "params": {
+        "url": { "type": "url", "required": true, "description": "An address." }
+      }
+    },
+    {
+      "name": "fake_file",
+      "title": "Fake file",
+      "description": "Reads a file.",
+      "args": ["{file}"],
+      "out": { "flag": "--out", "name": "fakekit-{host}", "otherwise": "{dir:file}" },
+      "params": {
+        "file": { "type": "url_or_path", "required": true, "description": "A file or an address." }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.EminBudak/makersmcp",
+  "title": "MakersMCP",
+  "description": "Free kits for makers: brand kits, fonts, screenshots, demo videos and launch films, run locally.",
+  "repository": {
+    "url": "https://github.com/EminBudak/makersmcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://makersmcp.com",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "makersmcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

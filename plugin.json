@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "makersmcp",
+  "version": "0.1.0",
+  "description": "Free kits for makers in one MCP: brand kits, fonts, screenshots, demo videos, launch films and fitted music, made on your own machine.",
+  "author": {
+    "name": "Emin Budak",
+    "url": "https://eminbudak.com"
+  },
+  "homepage": "https://makersmcp.com",
+  "repository": "https://github.com/EminBudak/makersmcp",
+  "license": "MIT",
+  "keywords": ["mcp", "brand", "fonts", "screenshots", "video", "music", "design"]
+}

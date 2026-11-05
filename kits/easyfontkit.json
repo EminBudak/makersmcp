@@ -1,0 +1,23 @@
+{
+  "kit": "easyfontkit",
+  "package": "easyfontkit",
+  "field": "design",
+  "about": "A website's fonts, how each one is licensed, and the closest free font for each one that is not free.",
+  "repository": "https://github.com/EminBudak/easyfontkit",
+  "needs": ["chrome"],
+  "tools": [
+    {
+      "name": "make_font_kit",
+      "title": "Fonts of a website",
+      "description": "Reads a website in a headless browser and saves its fonts in one folder: which font draws its headings, body text, buttons and code, every font file the page loads, how each one is licensed, and the closest free font for each one that is not free. FONTS.md is for people and agents, fonts.css for pages, fonts.json for tools. The license of each font is written next to it so the user can decide what to use.",
+      "args": ["{url}"],
+      "out": { "flag": "--out", "name": "easyfontkit-{host}" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
+        "files": { "type": "boolean", "flag": "--no-files", "when": false, "description": "Set to false to read the font files without saving them." },
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 900, "description": "Give up after this many seconds (default 120)." }
+      },
+      "docs": ["FONTS.md"]
+    }
+  ]
+}

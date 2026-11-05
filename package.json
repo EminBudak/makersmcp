@@ -1,0 +1,66 @@
+{
+  "name": "makersmcp",
+  "version": "0.1.0",
+  "description": "Free kits for makers, one MCP: brand kits, fonts, screenshots, demo videos, launch films and fitted music for your agent, all made on your own machine.",
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "bin": {
+    "makersmcp": "dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "kits",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "agent",
+    "claude",
+    "cursor",
+    "codex",
+    "brand",
+    "fonts",
+    "screenshots",
+    "video",
+    "music",
+    "makers"
+  ],
+  "author": "Emin Budak (https://eminbudak.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EminBudak/makersmcp.git"
+  },
+  "homepage": "https://makersmcp.com",
+  "bugs": "https://github.com/EminBudak/makersmcp/issues",
+  "mcpName": "io.github.EminBudak/makersmcp",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "easybrandkit": "^0.4.0",
+    "launch-film": "^0.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

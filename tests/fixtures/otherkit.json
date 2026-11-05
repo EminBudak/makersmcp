@@ -1,0 +1,20 @@
+{
+  "kit": "otherkit",
+  "package": "otherkit",
+  "field": "test",
+  "about": "A second kit for the tests, the same script as fakekit.",
+  "repository": "https://example.com/otherkit",
+  "needs": [],
+  "tools": [
+    {
+      "name": "other_make",
+      "title": "Other make",
+      "description": "Makes another fake folder.",
+      "args": ["{url}"],
+      "out": { "flag": "--out", "name": "otherkit-{host}" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "An address." }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "makersmcp",
+  "description": "MakersMCP: free kits for makers in one MCP. Brand kits, fonts, screenshots, demo videos, launch films and fitted music from a website or a file, made on your own machine.",
+  "owner": {
+    "name": "Emin Budak"
+  },
+  "plugins": [
+    {
+      "name": "makersmcp",
+      "description": "One MCP server for the MakersMCP kits: easybrandkit, easyfontkit, easyscreenshot, launch-film and musicfit. Each tool saves its files in a folder and tells your agent what is in it.",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "Emin Budak"
+      },
+      "homepage": "https://makersmcp.com",
+      "repository": "https://github.com/EminBudak/makersmcp",
+      "license": "MIT",
+      "keywords": ["mcp", "brand", "fonts", "screenshots", "video", "music", "design"]
+    }
+  ]
+}

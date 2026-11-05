@@ -1,0 +1,24 @@
+{
+  "kit": "easybrandkit",
+  "package": "easybrandkit",
+  "field": "design",
+  "about": "A website's brand kit: its real logo files, colors, fonts and first screen.",
+  "repository": "https://github.com/EminBudak/easybrandkit",
+  "needs": ["chrome"],
+  "tools": [
+    {
+      "name": "make_brand_kit",
+      "title": "Brand kit from a website",
+      "description": "Reads a website in a headless browser, the way it is drawn, and saves its brand in one folder: the logo files cut from their real background (PNG and SVG), the colors with where each one is used, the fonts, the first screen, a brand card, and the app store icon and screenshots when the site links to its apps. BRAND.md is for people and agents, brand.json for tools, _brand.yml for Quarto and Shiny. With facts, it also lists what the site claims about itself, each claim with its page, in FACTS.md. Read BRAND.md before designing anything for that product.",
+      "args": ["{url}"],
+      "out": { "flag": "--out", "name": "easybrandkit-{host}" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
+        "facts": { "type": "boolean", "flag": "--facts", "description": "Also read what the site claims about itself from its home, pricing, customers, security, integrations and about pages. Takes longer." },
+        "stores": { "type": "boolean", "flag": "--no-stores", "when": false, "description": "Set to false to skip app store listings and social profiles." },
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 900, "description": "Give up after this many seconds (default 120, or 240 with facts)." }
+      },
+      "docs": ["BRAND.md", "FACTS.md"]
+    }
+  ]
+}

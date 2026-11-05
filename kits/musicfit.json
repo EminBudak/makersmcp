@@ -1,0 +1,45 @@
+{
+  "kit": "musicfit",
+  "package": "musicfit",
+  "field": "sound",
+  "about": "A music track fitted to a video cut: the right length, the drop on the hit, ducked under a voice.",
+  "repository": "https://github.com/EminBudak/musicfit",
+  "needs": ["ffmpeg"],
+  "tools": [
+    {
+      "name": "fit_music",
+      "title": "Fit a track to a video",
+      "description": "Fits a music track to a video cut: makes it exactly the given length by cutting or looping whole bars, lands its drop on the hit, ends it on a beat, ducks it under a voice and sets its loudness. Writes fitted.wav, cues.json (every beat, bar, seam and the hit, in seconds and frames), seams.png and FIT.md (what was done and where to listen). Give cues.json to check_video to check the cuts land on the beat.",
+      "args": ["{track}"],
+      "out": { "flag": "--out", "name": "musicfit-{stem:track}" },
+      "params": {
+        "track": { "type": "path", "required": true, "description": "The music file, or a video whose sound to use; anything ffmpeg reads." },
+        "length": { "type": "string", "flag": "--length", "required": true, "description": "How long the result is: seconds like 32 or 32s, frames like 960f, or 1:05." },
+        "hit": { "type": "string", "flag": "--hit", "description": "Where the drop lands in the result, in seconds or frames like 825f." },
+        "drop": { "type": "string", "flag": "--drop", "description": "Where the drop is in the track (default: found)." },
+        "fps": { "type": "number", "flag": "--fps", "description": "Frame rate for frame numbers, like 30, 25 or 29.97 (default 30)." },
+        "voice": { "type": "path", "flag": "--voice", "description": "A voice track on the video's timeline; the music dips under it." },
+        "duck": { "type": "number", "flag": "--duck", "description": "How far the music dips under the voice, in dB (default 10)." },
+        "lufs": { "type": "number", "flag": "--lufs", "description": "Loudness target in LUFS (default -14)." },
+        "end": { "type": "enum", "flag": "--end", "values": ["auto", "natural", "fade"], "description": "How it ends: auto, natural (the track's own ending) or fade (default auto)." },
+        "fade": { "type": "number", "flag": "--fade", "description": "Length of the closing fade, in whole beats (default a bar)." },
+        "bpm": { "type": "number", "flag": "--bpm", "description": "The tempo, when the one found is half or double the real one." },
+        "meter": { "type": "enum", "flag": "--meter", "values": ["3", "4"], "description": "Beats to a bar (default: found)." }
+      },
+      "docs": ["FIT.md"]
+    },
+    {
+      "name": "analyze_music",
+      "title": "Read a music track",
+      "description": "Reads a music track without changing it: its tempo, beats, bars, drop and ending, written to FIT.md and cues.json. Use it before fit_music to pick the hit.",
+      "args": ["{track}", "--analyze"],
+      "out": { "flag": "--out", "name": "musicfit-{stem:track}" },
+      "params": {
+        "track": { "type": "path", "required": true, "description": "The music file, or a video whose sound to read." },
+        "bpm": { "type": "number", "flag": "--bpm", "description": "The tempo, when the one found is half or double the real one." },
+        "meter": { "type": "enum", "flag": "--meter", "values": ["3", "4"], "description": "Beats to a bar (default: found)." }
+      },
+      "docs": ["FIT.md"]
+    }
+  ]
+}

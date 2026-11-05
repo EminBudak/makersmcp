@@ -1,0 +1,66 @@
+{
+  "kit": "easyscreenshot",
+  "package": "easyscreenshot",
+  "field": "image",
+  "about": "Clean screenshots of a website, a demo video of it, and screenshots for its web app manifest.",
+  "repository": "https://github.com/EminBudak/easyscreenshot",
+  "needs": ["chrome", "ffmpeg"],
+  "tools": [
+    {
+      "name": "take_screenshots",
+      "title": "Screenshots of a website",
+      "description": "Opens a website in a headless browser, picks the pages worth showing (home, pricing, features and the like), hides cookie banners, chat bubbles and other floating boxes, and saves desktop, phone and whole-page screenshots in one folder. SCREENSHOTS.md is for people and agents, manifest.json for tools, sheet.png shows every page on one picture. Sizes: desktop is 1600x900 at 2x, mobile 360x640 at 3x, iphone 440x956 at 3x, full the whole page at 1x, mobile-full the whole phone page at 2x, or any WxH with an optional @scale (1270x760@2 is a Product Hunt gallery image).",
+      "args": ["{url}"],
+      "out": { "flag": "--out", "name": "easyscreenshot-{host}" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
+        "pages": { "type": "integer", "flag": "--pages", "min": 1, "max": 12, "description": "How many pages, the home page included (default 5)." },
+        "page": { "type": "repeat", "flag": "--page", "description": "Pages to take too, like /pricing." },
+        "sizes": { "type": "list", "flag": "--sizes", "description": "Any of desktop, mobile, iphone, full, mobile-full or WxH, each with an optional @scale (default desktop, mobile and full)." },
+        "theme": { "type": "enum", "flag": "--theme", "values": ["light", "dark", "both"], "description": "The site's light or dark look, or both (default light)." },
+        "lang": { "type": "string", "flag": "--lang", "description": "The site's version in this language, when it has one, like de." },
+        "hide": { "type": "repeat", "flag": "--hide", "description": "CSS selectors of more elements to hide." },
+        "reduced_motion": { "type": "boolean", "flag": "--reduced-motion", "description": "Ask the site for its reduced-motion version." },
+        "clean": { "type": "boolean", "flag": "--no-clean", "when": false, "description": "Set to false to take the pages as they come, banners and bubbles included." },
+        "pwa": { "type": "boolean", "flag": "--pwa", "description": "Also save screenshots for a web app manifest in pwa/: each page's first screen at 1920x1080 and on a phone at 1080x1920, checked against Chrome's rules for its richer install dialog, with the manifest entries in pwa/manifest-screenshots.json." },
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 1800, "description": "Give up after this many seconds (default 300)." }
+      },
+      "docs": ["SCREENSHOTS.md"]
+    },
+    {
+      "name": "record_demo_video",
+      "title": "Demo video of a website",
+      "description": "Records a short demo video of a website: a tour of the pages worth showing, or the steps in a file. The page plays in a browser window on a backdrop, with a visible pointer, smooth scrolling and a zoom on each click. Cookie banners and chat bubbles are hidden, never clicked. Saves demo.mp4 (1920x1080, H.264), demo.gif, poster.png and steps.json, which says where every step starts and ends, in seconds and in frames.",
+      "args": ["demo", "{url}"],
+      "out": { "flag": "--out", "name": "easyscreenshot-demo-{host}" },
+      "params": {
+        "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
+        "steps": { "type": "path", "flag": "--steps", "description": "A YAML or JSON file of steps to follow instead of a tour: visit, scroll, click, type, wait, hover, key." },
+        "pages": { "type": "integer", "flag": "--pages", "min": 1, "max": 8, "description": "Pages in the tour, the home page included (default 4)." },
+        "page": { "type": "repeat", "flag": "--page", "description": "Pages to take in the tour, like /pricing." },
+        "zoom": { "type": "number", "flag": "--zoom", "min": 1, "max": 2.5, "description": "How far a click zooms in, 1 to 2.5 (default 1.5). 1 means no zoom." },
+        "background": { "type": "string", "flag": "--background", "description": "Behind the window: a colour, two colours for a gradient, or a picture file." },
+        "frame": { "type": "boolean", "flag": "--no-frame", "when": false, "description": "Set to false for the page alone, filling the video." },
+        "fps": { "type": "integer", "flag": "--fps", "min": 24, "max": 60, "description": "Frames a second (default 30)." },
+        "theme": { "type": "enum", "flag": "--theme", "values": ["light", "dark"], "description": "The site's light or dark look (default light)." },
+        "lang": { "type": "string", "flag": "--lang", "description": "The site's version in this language, when it has one." },
+        "hide": { "type": "repeat", "flag": "--hide", "description": "CSS selectors of more elements to hide." },
+        "reduced_motion": { "type": "boolean", "flag": "--reduced-motion", "description": "Ask the site for its reduced-motion version." },
+        "clean": { "type": "boolean", "flag": "--no-clean", "when": false, "description": "Set to false to keep the banners and bubbles." },
+        "gif": { "type": "boolean", "flag": "--no-gif", "when": false, "description": "Set to false to skip demo.gif." },
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 1800, "description": "Give up after this many seconds (default 900)." }
+      }
+    },
+    {
+      "name": "check_pwa_screenshots",
+      "title": "Check a web app manifest's screenshots",
+      "description": "Checks the screenshots a web app manifest lists against Chrome's rules for its richer install dialog, without a browser. Passes or lists what needs fixing.",
+      "args": ["--pwa-check", "{manifest}"],
+      "check": true,
+      "readOnly": true,
+      "params": {
+        "manifest": { "type": "url_or_path", "required": true, "description": "The manifest's file or address, or the site's address." }
+      }
+    }
+  ]
+}

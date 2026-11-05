@@ -1,0 +1,25 @@
+{
+  "name": "makersmcp",
+  "version": "0.1.0",
+  "description": "Free kits for makers in one MCP: brand kits, fonts, screenshots, demo videos, launch films and fitted music, made on your own machine.",
+  "author": {
+    "name": "Emin Budak",
+    "url": "https://eminbudak.com"
+  },
+  "repository": "https://github.com/EminBudak/makersmcp",
+  "license": "MIT",
+  "keywords": ["mcp", "brand", "fonts", "screenshots", "video", "music", "design"],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "MakersMCP",
+    "shortDescription": "Free kits for makers, one MCP",
+    "longDescription": "Gives your agent the MakersMCP kits through one MCP server: a website's brand kit and fonts, clean screenshots and a demo video, a launch film with its pictures, a video check and music fitted to a cut. Everything runs on your machine with the Chrome and ffmpeg you have, with no account or key.",
+    "developerName": "Emin Budak",
+    "category": "Creativity",
+    "capabilities": ["Read", "Write"],
+    "websiteUrl": "https://makersmcp.com",
+    "defaultPrompt": ["Make a launch film for linear.app"],
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg"
+  }
+}
