@@ -172,7 +172,7 @@ const server = createMcpServer({ kits: ['easybrandkit', 'launch-film'], outDir: 
 await server.connect(new StdioServerTransport());
 ```
 
-`createMcpServer` takes `kits`, `outDir`, `kitPaths` and `definitions`, and works over any MCP transport; its running jobs stop when the transport closes. `loadKitDefinitions`, `validateKitDefinition` and `describeSetup` are exported too.
+`createMcpServer` takes `kits`, `outDir`, `kitPaths`, `definitions` and `backend`, and works over any MCP transport. The backend decides where the jobs run. The default, `LocalBackend`, runs them on this machine and stops them when the transport closes. A service can pass its own `KitBackend` ([src/backend.ts](src/backend.ts)) to run them on its machines; the tools then take links instead of paths and return links to the files. `loadKitDefinitions`, `validateKitDefinition`, `buildCommand` and `describeSetup` are exported too.
 
 ## Add a kit
 

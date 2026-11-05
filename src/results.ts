@@ -1,18 +1,8 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { Job } from './jobs.js';
+import type { JobView } from './backend.js';
 
-const MAX_FILES = 200;
 const MAX_LISTED = 40;
-const MAX_DOC_CHARS = 40_000;
-const TAIL_LINES = 30;
-
-export interface FileEntry {
-  path: string;
-  bytes: number;
-}
 
 export const jobOutputSchema = {
   job_id: z.string(),
@@ -23,7 +13,12 @@ export const jobOutputSchema = {
   exit_code: z.number().int().nullable().optional(),
   elapsed_seconds: z.number(),
   folder: z.string().optional().describe('Where the kit saved its files.'),
-  files: z.array(z.object({ path: z.string(), bytes: z.number() })).optional(),
+  files: z.array(z.object({
+    path: z.string(),
+    bytes: z.number(),
+    url: z.string().optional().describe('Where to download the file, when the job ran on a server.'),
+  })).optional(),
+  expires_at: z.string().optional().describe('When the download links stop working.'),
   last_line: z.string().optional().describe('What the kit was doing last.'),
   next_action: z.object({
     tool: z.string(),
@@ -31,122 +26,95 @@ export const jobOutputSchema = {
   }).optional(),
 };
 
-/** The files in a folder, relative to it, in name order, at most MAX_FILES. */
-export function listFiles(folder: string): FileEntry[] {
-  const files: FileEntry[] = [];
-  const walk = (dir: string) => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (files.length >= MAX_FILES) return;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) files.push({ path: path.relative(folder, full), bytes: statSync(full).size });
-    }
-  };
-  if (existsSync(folder)) walk(folder);
-  return files;
-}
-
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function tail(text: string, lines = TAIL_LINES): string {
-  return text.trim().split(/\r?\n/).slice(-lines).join('\n');
+function until(expiresAt: number): string {
+  return `${new Date(expiresAt * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
-/** What the kit said at the end: its summary on stdout, or its last lines when it writes only to stderr. */
-function summary(job: Job): string {
-  return job.stdout.trim() || tail(job.stderr, 12);
-}
-
-export function jobStructured(job: Job, files?: FileEntry[]) {
+export function jobStructured(view: JobView) {
   return {
-    job_id: job.id,
-    kit: job.spec.kit,
-    tool: job.spec.tool,
-    status: job.status,
-    ...(job.spec.check && job.status === 'done' ? { passed: job.exitCode === 0 } : {}),
-    exit_code: job.exitCode,
-    elapsed_seconds: job.elapsedSeconds,
-    ...(job.spec.folder ? { folder: job.spec.folder } : {}),
-    ...(files ? { files } : {}),
-    ...(job.lastLine ? { last_line: job.lastLine } : {}),
-    ...(job.status === 'running'
-      ? { next_action: { tool: 'wait_for_job', arguments: { job_id: job.id } } }
+    job_id: view.id,
+    kit: view.kit,
+    tool: view.tool,
+    status: view.status,
+    ...(view.check && view.status === 'done' ? { passed: view.exitCode === 0 } : {}),
+    exit_code: view.exitCode,
+    elapsed_seconds: view.elapsedSeconds,
+    ...(view.folder ? { folder: view.folder } : {}),
+    ...(view.files ? { files: view.files } : {}),
+    ...(view.files && view.expiresAt ? { expires_at: new Date(view.expiresAt * 1000).toISOString() } : {}),
+    ...(view.lastLine ? { last_line: view.lastLine } : {}),
+    ...(view.status === 'running'
+      ? { next_action: { tool: 'wait_for_job', arguments: { job_id: view.id } } }
       : {}),
   };
 }
 
 /** The tool result for a job in any state. */
-export function jobResult(job: Job): CallToolResult {
-  const { spec } = job;
-  const seconds = `${job.elapsedSeconds} s`;
+export function jobResult(view: JobView): CallToolResult {
+  const seconds = `${view.elapsedSeconds} s`;
 
-  if (job.status === 'running') {
+  if (view.status === 'running') {
     return {
       content: [{
         type: 'text',
-        text: `## ${spec.title}: still running after ${seconds}\n\n`
-          + (job.lastLine ? `Last step: ${job.lastLine}\n\n` : '')
-          + `Job ID: ${job.id}\n\n`
-          + `Call wait_for_job with this job_id to keep waiting. Do not call ${spec.tool} again for the same thing: that starts a second job.`,
+        text: `## ${view.title}: still running after ${seconds}\n\n`
+          + (view.lastLine ? `Last step: ${view.lastLine}\n\n` : '')
+          + `Job ID: ${view.id}\n\n`
+          + `Call wait_for_job with this job_id to keep waiting. Do not call ${view.tool} again for the same thing: that starts a second job.`,
       }],
-      structuredContent: jobStructured(job),
+      structuredContent: jobStructured(view),
     };
   }
 
-  if (job.status === 'canceled') {
+  if (view.status === 'canceled') {
     return {
-      content: [{ type: 'text', text: `## ${spec.title}: canceled after ${seconds}\n\nJob ID: ${job.id}` }],
-      structuredContent: jobStructured(job),
+      content: [{ type: 'text', text: `## ${view.title}: canceled after ${seconds}\n\nJob ID: ${view.id}` }],
+      structuredContent: jobStructured(view),
     };
   }
 
-  if (job.status === 'failed') {
-    const said = [tail(job.stderr), tail(job.stdout, 10)].filter(Boolean).join('\n\n');
+  if (view.status === 'failed') {
     return {
       content: [{
         type: 'text',
-        text: `## ${spec.title}: failed after ${seconds}`
-          + (job.exitCode !== null ? ` (exit code ${job.exitCode})` : '')
-          + `\n\n${said || 'The kit said nothing.'}\n\nJob ID: ${job.id}`,
+        text: `## ${view.title}: failed after ${seconds}`
+          + (view.exitCode !== null ? ` (exit code ${view.exitCode})` : '')
+          + `\n\n${view.failure || 'The kit said nothing.'}\n\nJob ID: ${view.id}`,
       }],
-      structuredContent: jobStructured(job),
+      structuredContent: jobStructured(view),
       isError: true,
     };
   }
 
-  const files = spec.folder ? listFiles(spec.folder) : undefined;
-  const heading = spec.check
-    ? `## ${spec.title}: ${job.exitCode === 0 ? 'passed' : 'failed the check'} (${seconds})`
-    : `## ${spec.title}: done in ${seconds}`;
-  const parts = [heading, summary(job)];
+  const heading = view.check
+    ? `## ${view.title}: ${view.exitCode === 0 ? 'passed' : 'failed the check'} (${seconds})`
+    : `## ${view.title}: done in ${seconds}`;
+  const parts = [heading, view.summary ?? ''];
 
-  if (spec.folder && files) {
-    const listed = files.slice(0, MAX_LISTED).map(file => `- ${file.path} (${size(file.bytes)})`);
-    if (files.length > MAX_LISTED) listed.push(`- and ${files.length - MAX_LISTED} more`);
-    parts.push(`Folder: ${spec.folder}\n\n${listed.join('\n') || 'No files.'}`);
+  if (view.files) {
+    const listed = view.files.slice(0, MAX_LISTED)
+      .map(file => `- ${file.path} (${size(file.bytes)})${file.url ? `: ${file.url}` : ''}`);
+    if (view.files.length > MAX_LISTED) listed.push(`- and ${view.files.length - MAX_LISTED} more`);
+    const where = view.files.some(file => file.url)
+      ? `Files${view.expiresAt ? `, to download until ${until(view.expiresAt)}` : ''}:`
+      : `Folder: ${view.folder}`;
+    parts.push(`${where}\n\n${listed.join('\n') || 'No files.'}`);
   }
 
-  for (const doc of spec.docs ?? []) {
-    const file = spec.folder ? path.join(spec.folder, doc) : undefined;
-    if (!file || !existsSync(file)) continue;
-    let text = readFileSync(file, 'utf8');
-    if (text.length > MAX_DOC_CHARS) text = `${text.slice(0, MAX_DOC_CHARS)}\n\n(cut here: read ${file} for the rest)`;
-    parts.push(`### ${doc}\n\n${text.trim()}`);
+  for (const doc of view.docs ?? []) {
+    parts.push(`### ${doc.name}\n\n${doc.text.trim()}`
+      + (doc.more ? `\n\n(cut here: read ${doc.more} for the rest)` : ''));
   }
 
   return {
     content: [{ type: 'text', text: parts.filter(Boolean).join('\n\n') }],
-    structuredContent: jobStructured(job, files),
+    structuredContent: jobStructured(view),
   };
 }
 

@@ -73,7 +73,7 @@ const options: MakersMcpOptions = {
 
 try {
   if (parsed.check) {
-    console.log(describeSetup(options));
+    console.log(await describeSetup(options));
     process.exit(0);
   }
   const server = createMcpServer(options);
