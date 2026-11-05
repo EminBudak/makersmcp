@@ -69,12 +69,18 @@ test('tools/list has the installed kits, the core tools and 2020-12 schemas', as
   });
 });
 
-test('--kits turns on only the kits it names, and an unknown kit is an error', async () => {
+test('--kits turns on only the kits it names, all or nothing turns on every kit, and an unknown kit is an error', async () => {
   await withClient({ kits: ['otherkit'] }, async client => {
     const names = (await client.listTools()).tools.map(tool => tool.name);
     assert.ok(names.includes('other_make'));
     assert.ok(!names.includes('fake_make'));
   });
+  for (const kits of [['all'], ['ALL'], [], ['otherkit', 'all']]) {
+    await withClient({ kits }, async client => {
+      const names = (await client.listTools()).tools.map(tool => tool.name);
+      assert.ok(names.includes('other_make') && names.includes('fake_make'), `kits: ${kits}`);
+    });
+  }
   assert.throws(() => createMcpServer({ definitions, kits: ['nokit'] }), /Unknown kit: nokit/);
 });
 

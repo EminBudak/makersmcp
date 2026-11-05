@@ -11,7 +11,8 @@ VS Code or Codex. Every kit that is installed is turned on.
 
 Options:
   --kits <list>        turn on only these kits, like easybrandkit,launch-film
-                       (or MAKERSMCP_KITS)
+                       (or MAKERSMCP_KITS); all, or leaving it out, turns on
+                       every kit
   --out <dir>          where kits save (or MAKERSMCP_OUT; default: the folder
                        makersmcp starts in, or ~/makersmcp)
   --kit-path <k=dir>   use a kit's checkout instead of its package, like

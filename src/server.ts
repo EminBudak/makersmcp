@@ -30,7 +30,7 @@ const require = createRequire(import.meta.url);
 export const version = (require('../package.json') as { version: string }).version;
 
 export interface MakersMcpOptions {
-  /** Turn on only these kits. Default: every kit that is installed. */
+  /** Turn on only these kits. Empty, or with "all" in it: every kit that is installed. */
   kits?: string[];
   /** Where kits save, and what relative paths are read from. */
   outDir?: string;
@@ -50,17 +50,20 @@ function prepare(options: MakersMcpOptions): ToolContext {
     }
   }
 
+  // No kits, or "all" among them, turns on every kit that is installed.
+  const asked = (options.kits ?? []).map(kit => kit.trim()).filter(Boolean);
+  const all = asked.length === 0 || asked.some(kit => kit.toLowerCase() === 'all');
   const known = new Set(definitions.map(definition => definition.kit));
-  const unknown = (options.kits ?? []).filter(kit => !known.has(kit));
+  const unknown = all ? [] : asked.filter(kit => !known.has(kit));
   if (unknown.length) {
-    throw new Error(`Unknown kit: ${unknown.join(', ')}. The kits are ${[...known].join(', ')}.`);
+    throw new Error(`Unknown kit: ${unknown.join(', ')}. The kits are ${[...known].join(', ')}, or all.`);
   }
 
   const kits = definitions.map(definition => resolveKit(definition, options.kitPaths));
   const installed = new Map<string, InstalledKit>(
     kits.filter(isInstalled).map(kit => [kit.definition.kit, kit]),
   );
-  const wanted = options.kits?.length ? new Set(options.kits) : undefined;
+  const wanted = all ? undefined : new Set(asked);
   const enabled = new Set([...installed.keys()].filter(kit => !wanted || wanted.has(kit)));
 
   return {
