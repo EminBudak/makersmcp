@@ -15,8 +15,13 @@ test('every manifest carries the version in package.json', () => {
   assert.equal(server.name, mcpName);
 });
 
-test('the MCP configs run the release in package.json', () => {
+test('the MCP configs and the README run the release in package.json', () => {
   for (const file of ['mcp.json', '.mcp.json']) {
     assert.deepEqual(read(file).mcpServers.makersmcp.args, ['-y', `makersmcp@${version}`], file);
   }
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const pinned = [...readme.matchAll(/makersmcp@([\w.-]*\w)/g)].map(match => match[1]);
+  assert.ok(pinned.length > 0);
+  assert.deepEqual([...new Set(pinned)], [version]);
+  assert.doesNotMatch(readme, /npx -y makersmcp(?!@)/, 'every npx in the README pins the version');
 });

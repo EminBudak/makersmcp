@@ -18,38 +18,116 @@ Each kit lives in its own repository and works on its own too, as a CLI and an a
 
 More kits are on the way.
 
-## Use it
+## Set it up
 
-The first release on npm is on its way, so until it is out the commands below will not find the package. Star the repo to hear when it ships.
+The first release on npm is on its way, so until it is out the `npx` setups below will not find the package; [run it from source](#run-it-from-source) works today. Star the repo to hear when it ships.
 
-You need Node 22 or newer and the Chrome, Chromium, Edge or Brave you already have. The video and sound kits also need ffmpeg.
+You need Node 22 or newer and the Chrome, Chromium, Edge or Brave you already have. The video and sound kits also need ffmpeg. Every setup runs `npx -y makersmcp@0.1.0`: keep the version in it, since `npx` can otherwise go on using an older copy it cached.
 
-In Claude Code:
+Then ask your agent for what you need, like "make a launch film for linear.app" or "get the brand kit and the fonts of stripe.com".
 
-```bash
-claude mcp add makersmcp -- npx -y makersmcp
-```
-
-In Codex:
+### Claude Code
 
 ```bash
-codex mcp add makersmcp -- npx -y makersmcp
+claude mcp add makersmcp -- npx -y makersmcp@0.1.0
 ```
 
-Claude Desktop, Cursor and other MCP clients take the same command in their MCP settings:
+Check it with `claude mcp get makersmcp`, or `/mcp` inside Claude Code.
+
+### Claude Desktop
+
+Add this to `claude_desktop_config.json`, then quit Claude Desktop fully and open it again:
+
+```json
+{
+  "mcpServers": {
+    "makersmcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "makersmcp@0.1.0"]
+    }
+  }
+}
+```
+
+Claude Desktop starts servers outside any project, so the files go to `~/makersmcp`. For another folder, add `"env": { "MAKERSMCP_OUT": "<folder>" }` to the entry.
+
+### Cursor
+
+Open the command palette (Cmd+Shift+P, or Ctrl+Shift+P on Windows and Linux), run "Open MCP settings" and add:
 
 ```json
 {
   "mcpServers": {
     "makersmcp": {
       "command": "npx",
-      "args": ["-y", "makersmcp"]
+      "args": ["-y", "makersmcp@0.1.0"]
     }
   }
 }
 ```
 
-Then ask your agent for what you need, like "make a launch film for linear.app" or "get the brand kit and the fonts of stripe.com". To see what makersmcp found on your machine, run `npx -y makersmcp --check`.
+### VS Code
+
+```bash
+code --add-mcp '{"name":"makersmcp","command":"npx","args":["-y","makersmcp@0.1.0"]}'
+```
+
+### Codex
+
+```bash
+codex mcp add makersmcp -- npx -y makersmcp@0.1.0
+```
+
+### Windsurf
+
+Open Settings, then MCP, and add the same entry as for Cursor.
+
+### OpenClaw
+
+Add it under `mcp.servers` in your OpenClaw config:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "makersmcp": {
+        "command": "npx",
+        "args": ["-y", "makersmcp@0.1.0"]
+      }
+    }
+  }
+}
+```
+
+Check it with `openclaw mcp doctor makersmcp --probe`.
+
+### Hermes
+
+Add it under `mcp_servers` in `~/.hermes/config.yaml`, then run `/reload-mcp`:
+
+```yaml
+mcp_servers:
+  makersmcp:
+    command: "npx"
+    args: ["-y", "makersmcp@0.1.0"]
+    timeout: 60
+```
+
+### Other clients
+
+Any MCP client that runs stdio servers can start it with `npx -y makersmcp@0.1.0`.
+
+### Run it from source
+
+```bash
+git clone https://github.com/EminBudak/makersmcp.git
+cd makersmcp
+npm install
+npm run build
+```
+
+In any setup above, use `node` as the command and the full path of `dist/index.js` as its argument. `node dist/index.js --check` lists the kits it found, Chrome, ffmpeg and the folder it saves to.
 
 ## Where the files go
 
@@ -57,13 +135,34 @@ Every tool saves its files in a folder and returns the folder, the files in it a
 
 A long job, like rendering a film, keeps going after the tool returns. The tool then gives back a `job_id`, and your agent calls `wait_for_job` with it until the job ends. `list_jobs` and `cancel_job` do what they say, and `check_setup` tells what is missing when a kit fails to start.
 
-## Pick your kits
+## When something fails
 
-Every kit that is installed is on. To give your agent fewer tools, turn on only the kits you use:
+- The tools don't appear: check that `node --version` says 22 or newer, then restart the client. `npx -y makersmcp@0.1.0 --check` lists what makersmcp found.
+- A kit can't find Chrome or ffmpeg: set `CHROME_PATH` and `FFMPEG_PATH` in the server's `env`. launch-film reads `LAUNCH_FILM_CHROME` and `LAUNCH_FILM_FFMPEG`.
+- A long job meets the client's time limit: no call waits longer than `wait_seconds`, 45 by default. A job still running then comes back with a `job_id` and `next_action: wait_for_job`, and the agent should call that, never the first tool again, which would start a second job. Where a client lets you set a tool timeout, keep it above 45 seconds.
 
-```bash
-npx -y makersmcp --kits easybrandkit,launch-film
+## Settings
+
+| Option | Environment | What it does |
+| --- | --- | --- |
+| `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`, so your agent sees fewer tools |
+| `--out <dir>` | `MAKERSMCP_OUT` | where the folders go |
+| `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package |
+| `--check` | | prints the kits, Chrome, ffmpeg and the folder, and exits |
+
+Every kit that is installed is on unless `--kits` names others.
+
+## Use it in your own server
+
+```js
+import { createMcpServer } from 'makersmcp';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+const server = createMcpServer({ kits: ['easybrandkit', 'launch-film'], outDir: '/srv/makersmcp' });
+await server.connect(new StdioServerTransport());
 ```
+
+`createMcpServer` takes `kits`, `outDir`, `kitPaths` and `definitions`, and works over any MCP transport; its running jobs stop when the transport closes. `loadKitDefinitions`, `validateKitDefinition` and `describeSetup` are exported too.
 
 ## Add a kit
 
@@ -74,9 +173,8 @@ makersmcp has no code for any kit. Each kit is a JSON file in [kits/](kits) that
 ```bash
 npm install
 npm test
-node dist/index.js --check
 ```
 
-To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`. The package also exports `createMcpServer`, to serve the kits over another transport.
+To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`.
 
 [MIT](LICENSE)
