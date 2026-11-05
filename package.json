@@ -22,6 +22,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "clean": "rm -rf dist",
     "test": "npm run build && node --test tests/*.test.mjs",
     "prepublishOnly": "npm run clean && npm run build"
