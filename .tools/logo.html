@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- The logo at the top of README.md: the site's mark and name on its coffee background.
+     Render it from the repository root:
+     google-chrome --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=600,168 \
+       --default-background-color=00000000 --virtual-time-budget=4000 \
+       --screenshot="$PWD/assets/logo.png" "file://$PWD/.tools/logo.html" -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@600&display=swap">
+<style>
+  html, body { margin: 0; width: 600px; height: 168px; overflow: hidden; background: transparent; }
+  .logo {
+    box-sizing: border-box;
+    width: 600px;
+    height: 168px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    background-color: #16110e;
+    background-image: radial-gradient(rgba(245, 237, 227, 0.09) 1.2px, transparent 1.2px);
+    background-size: 20px 20px;
+    background-position: 10px 10px;
+    color: #f5ede3;
+    font: 600 60px/1 "Geist", sans-serif;
+    letter-spacing: -0.02em;
+  }
+  svg { width: 62px; height: 62px; fill: #f5ede3; }
+  .lit { fill: #4caf7d; }
+</style>
+</head>
+<body>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="lit" x="2" y="2" width="9" height="9" rx="2.5"/><rect x="13" y="2" width="9" height="9" rx="2.5"/><rect x="2" y="13" width="9" height="9" rx="2.5"/><rect class="lit" x="13" y="13" width="9" height="9" rx="2.5"/></svg>
+    <span>MakersMCP</span>
+  </div>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# MakersMCP
+# <img src="assets/logo.png" alt="MakersMCP" width="360">
 
 Free kits for makers, one MCP. https://makersmcp.com
 
@@ -129,6 +129,18 @@ npm run build
 
 In any setup above, use `node` as the command and the full path of `dist/index.js` as its argument. `node dist/index.js --check` lists the kits it found, Chrome, ffmpeg and the folder it saves to.
 
+## Pick your kits
+
+Every kit is on unless you say otherwise. To give your agent fewer tools, name the kits you use:
+
+```bash
+npx -y makersmcp@0.1.0                                   # every kit
+npx -y makersmcp@0.1.0 --kits all                        # every kit, the same
+npx -y makersmcp@0.1.0 --kits easybrandkit,launch-film   # only these two
+```
+
+In a client's settings, the same goes at the end of `args`, like `["-y", "makersmcp@0.1.0", "--kits", "easybrandkit,launch-film"]`.
+
 ## Where the files go
 
 Every tool saves its files in a folder and returns the folder, the files in it and the kit's own notes, like BRAND.md. The folders go where makersmcp starts, which is your project for a coding agent, or `~/makersmcp` when it can't write there. Choose another place with `--out <dir>` or `MAKERSMCP_OUT`, or give a tool its own `out_dir`.
@@ -145,12 +157,10 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 
 | Option | Environment | What it does |
 | --- | --- | --- |
-| `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`, so your agent sees fewer tools |
+| `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`; leave it out or give `all` for every kit |
 | `--out <dir>` | `MAKERSMCP_OUT` | where the folders go |
 | `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package |
 | `--check` | | prints the kits, Chrome, ffmpeg and the folder, and exits |
-
-Every kit that is installed is on unless `--kits` names others.
 
 ## Use it in your own server
 
