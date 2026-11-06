@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { InstalledKit, ParamDefinition, ReplacedFolder, ToolDefinition } from './kits.js';
@@ -195,8 +195,9 @@ function nothingAt(name: string, param: ParamDefinition, full: string, text: str
 /**
  * Refuses a call that would have the kit lose a file in a folder of `folder` that it
  * makes again (out.replaces). Given a kit's folder in `from`, the kit deletes that folder
- * and copies the one given in its place; it then must hold nothing but a kit's own files
- * and files the copy brings back, and no file the call names. The same goes when it
+ * and copies the one given in its place, which therefore must be neither that folder under
+ * another name, nor in it, nor around it; the folder then must hold nothing but a kit's own
+ * files and files the copy brings back, and no file the call names. The same goes when it
  * deletes the folder to make its own, on every call or for the addresses in `addresses`.
  * For any other address the kit makes the folder again where it is, keeping what is not
  * a kit's, so only a file with a name it writes (`names`) stops it.
@@ -207,21 +208,38 @@ function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<st
     const given = kind.from === undefined ? undefined : values[kind.from];
     let how: string;
     let why: string | undefined;
+    let then = 'Give another out_dir, or move those files first.';
     if (typeof given === 'string') {
       if (usedInPlace(given, dir)) continue;
       // The folder the kit copies: the one given, or the folder of the file given.
       const copied = isFolder(given) ? given : path.dirname(given);
       how = `replaces the ${name} folder in ${folder} with a copy of ${copied}, deleting what is there`;
-      why = namedInside(dir, files) ?? notAKitsOwn(dir, kind, copied);
+      const deleted = foldersDeleted(dir);
+      const from = identity(copied);
+      if (typeof deleted === 'string') {
+        why = deleted;
+      } else if (from !== undefined && from === identity(dir, false) && deleted.has(from)) {
+        // The kit tells the two apart by their paths, so it would delete the folder it copies.
+        why = `${copied} is that same folder under another name, so it would be gone before the copy`;
+        then = `Give ${kind.from} as ${isFolder(given) ? dir : path.join(dir, path.basename(given))} to use it where it is.`;
+      } else if (from !== undefined && deleted.has(from)) {
+        why = `${copied} is inside it`;
+      } else if (within(dir, copied)) {
+        why = `${dir} is inside ${copied}, and a folder cannot be copied into itself`;
+        then = `Give an out_dir outside ${copied}.`;
+      } else {
+        why = namedInside(dir, files, deleted) ?? notAKitsOwn(dir, kind, { folder: copied, deleted });
+      }
     } else if (kind.addresses && !addressesOf(tool, values).some(address => inFull(kind.addresses!.pattern).test(address))) {
       if (kind.names === undefined) continue;
       how = `makes the ${name} folder in ${folder} again, which replaces a kit's own files there and any file named like one`;
       why = namedLikeOwn(dir, kind);
     } else {
       how = `replaces the ${name} folder in ${folder} with its own${kind.addresses ? ` for ${kind.addresses.about}` : ''}, deleting what is there`;
-      why = namedInside(dir, files) ?? notAKitsOwn(dir, kind);
+      const deleted = foldersDeleted(dir);
+      why = typeof deleted === 'string' ? deleted : namedInside(dir, files, deleted) ?? notAKitsOwn(dir, kind);
     }
-    if (why) throw new ArgumentError(`${tool.name} ${how}, and ${why}. Give another out_dir, or move those files first.`);
+    if (why) throw new ArgumentError(`${tool.name} ${how}, and ${why}. ${then}`);
   }
 }
 
@@ -252,21 +270,86 @@ function isFolder(file: string): boolean {
 }
 
 /**
- * A file the call names that goes, or is no longer where its path leads, once `dir` is
- * deleted and made again, in words: one in it by its path, or in it by where it really
- * is. Deleting a link deletes only the link, so then only the path counts.
+ * A file or folder itself, as the system knows it: its disk and its number there. Every
+ * path to one folder gives the same, in another letter case on a disk that ignores case,
+ * through a link or through a mount, where the paths themselves differ. With `follow`
+ * false, a link is itself and not what it leads to.
  */
-function namedInside(dir: string, files: string[]): string | undefined {
-  let link = false;
+function identity(file: string, follow = true): string | undefined {
   try {
-    link = lstatSync(dir).isSymbolicLink();
+    const stats = follow ? statSync(file, { bigint: true }) : lstatSync(file, { bigint: true });
+    return `${stats.dev}:${stats.ino}`;
   } catch {
-    // Not there: only a path in it could name a file in it.
+    return undefined;
   }
+}
+
+/** A path and each folder above it, up to the root. */
+function ancestors(file: string): string[] {
+  const found = [file];
+  for (let at = file, up = path.dirname(at); up !== at; at = up, up = path.dirname(at)) found.push(up);
+  return found;
+}
+
+/**
+ * Whether `file` is inside `folder` by identity: a folder above it, as its path gives them
+ * or with its links resolved, is that folder.
+ */
+function within(file: string, folder: string): boolean {
+  const target = identity(folder);
+  if (target === undefined) return false;
+  const above = path.dirname(file);
+  return [...new Set([...ancestors(above), ...ancestors(realPath(above))])].some(at => identity(at) === target);
+}
+
+/** The most folders a folder the kit deletes is searched through. */
+const MOST_FOLDERS = 10000;
+
+/**
+ * The folders that go when the kit deletes `dir` with all it holds, by identity: `dir`
+ * and every folder in it, mounts too. Deleting a link deletes only the link, so none when
+ * `dir` is one, or is not there. When the folders cannot all be told, why, in words.
+ */
+function foldersDeleted(dir: string): Set<string> | string {
+  const found = new Set<string>();
+  try {
+    if (!lstatSync(dir).isDirectory()) return found;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' || code === 'ENOTDIR' ? found : `${dir} cannot be read`;
+  }
+  const waiting = [dir];
+  for (let at = waiting.pop(); at !== undefined; at = waiting.pop()) {
+    const id = identity(at, false);
+    if (id === undefined) return `${at} cannot be read`;
+    // A mount of a folder above it, met again.
+    if (found.has(id)) continue;
+    if (found.size === MOST_FOLDERS) return `${dir} holds more than ${MOST_FOLDERS} folders, too many to look through`;
+    found.add(id);
+    try {
+      for (const entry of readdirSync(at, { withFileTypes: true })) {
+        if (entry.isDirectory()) waiting.push(path.join(at, entry.name));
+      }
+    } catch {
+      return `${at} cannot be read`;
+    }
+  }
+  return found;
+}
+
+/**
+ * A file the call names that goes, or is no longer where its path leads, once `dir` is
+ * deleted and made again, in words: one whose path leads through `dir`, however it is
+ * written, or one that really is in a folder that goes (`deleted`). Deleting a link
+ * deletes only the link, so then only the path counts.
+ */
+function namedInside(dir: string, files: string[], deleted: Set<string>): string | undefined {
+  const self = identity(dir, false);
   const inside = files.find(file => {
-    const relative = path.relative(dir, file);
-    const byPath = relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-    return byPath || (!link && isInside(dir, file));
+    if (self !== undefined && ancestors(file).some(at => identity(at, false) === self)) return true;
+    const real = realPath(file);
+    const id = identity(isFolder(real) ? real : path.dirname(real));
+    return id !== undefined && deleted.has(id);
   });
   return inside ? `${inside} is inside it` : undefined;
 }
@@ -284,13 +367,20 @@ function usedInPlace(value: unknown, dir: string): boolean {
   }
 }
 
+/** The folder a kit copies in place of the one it deletes. */
+interface Copy {
+  folder: string;
+  /** The folders deleting the other one deletes, by identity. */
+  deleted: Set<string>;
+}
+
 /**
  * What in a folder the kit would delete is not a kit's own, in words. Nothing when the
  * folder is not there, is empty, or holds only its marker, its files and what the
- * marker lists. With `copied`, the folder the kit copies in its place, a file that one
- * holds too, byte for byte, comes back, and so does a link to the same place.
+ * marker lists. With `copy`, the folder the kit copies in its place, a file that one holds
+ * too under the same name, byte for byte, comes back, and so does a link to the same place.
  */
-function notAKitsOwn(dir: string, kind: ReplacedFolder, copied?: string): string | undefined {
+function notAKitsOwn(dir: string, kind: ReplacedFolder, copy?: Copy): string | undefined {
   try {
     if (!statSync(dir).isDirectory()) return `${dir} is a file, not a folder`;
     if (readdirSync(dir).every(entry => SYSTEM_FILES.has(entry))) return undefined;
@@ -300,23 +390,23 @@ function notAKitsOwn(dir: string, kind: ReplacedFolder, copied?: string): string
     return `${dir} cannot be read`;
   }
   // brand/ as the link the copy makes again, when the kit given is a link.
-  if (copied !== undefined && sameEntry(dir, copied)) return undefined;
+  if (copy !== undefined && sameEntry(dir, copy.folder)) return undefined;
 
   const marker = kitMarker(dir, kind);
   let others: string[];
   try {
-    others = notOwn(dir, 'own' in marker ? marker.own : new Set(), copied);
+    others = notOwn(dir, 'own' in marker ? marker.own : new Set(), copy);
   } catch {
     return `${dir} cannot be read`;
   }
   if (!others.length) return undefined;
   // A marker that is not a kit's is the reason, unless the copy brings it back.
-  if ('problem' in marker && (marker.missing || copied === undefined || others.some(entry => entry === kind.marker || entry === `${kind.marker}/`))) {
+  if ('problem' in marker && (marker.missing || copy === undefined || others.some(entry => entry === kind.marker || entry === `${kind.marker}/`))) {
     return marker.problem;
   }
   const which = [
     'own' in marker ? (kind.lists?.length ? `its ${kind.marker} does not list` : 'no kit made') : undefined,
-    copied !== undefined ? 'the copy would not bring back' : undefined,
+    copy !== undefined ? 'the copy would not bring back' : undefined,
   ].filter(Boolean).join(' and ');
   return `${dir} holds ${namesInWords(others)}, which ${which}`;
 }
@@ -363,6 +453,8 @@ function namedLikeOwn(dir: string, kind: ReplacedFolder): string | undefined {
 /**
  * Whether `copy`, copied where `file` is, makes it again: the same file byte for byte,
  * or a link to the same place, since a copy turns a link into one to where it leads.
+ * The two are compared by their bytes, never by identity: one file under two names goes
+ * with the folder deleted, and notOwn leaves out a folder of the copy that goes too.
  */
 function sameEntry(file: string, copy: string): boolean {
   try {
@@ -372,9 +464,7 @@ function sameEntry(file: string, copy: string): boolean {
       const target = (link: string) => path.resolve(path.dirname(link), readlinkSync(link));
       return a.isSymbolicLink() && b.isSymbolicLink() && target(file) === target(copy);
     }
-    if (!a.isFile() || !b.isFile() || a.size !== b.size) return false;
-    if (a.dev === b.dev && a.ino === b.ino) return true;
-    return readFileSync(file).equals(readFileSync(copy));
+    return a.isFile() && b.isFile() && a.size === b.size && readFileSync(file).equals(readFileSync(copy));
   } catch {
     return false;
   }
@@ -398,30 +488,47 @@ function listedIn(marker: unknown, where: string): string[] {
     .filter(Boolean);
 }
 
+const byName = (a: Dirent, b: Dirent) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+
 /**
  * The entries of a folder that are not among its own files, like notes.md or drafts/,
  * in name order. Links are entries like files: deleting one leaves what it points to.
- * With `copied`, an entry the copy of that folder makes again is not among them either.
+ * With `copy`, an entry the copy of that folder makes again is not among them either:
+ * one it holds under the very same name, in a folder of it that is not deleted too.
  */
-function notOwn(dir: string, own: Set<string>, copied?: string): string[] {
+function notOwn(dir: string, own: Set<string>, copy?: Copy): string[] {
   const found: string[] = [];
   const walk = (relative: string) => {
-    const entries = readdirSync(path.join(dir, relative), { withFileTypes: true })
-      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const entries = readdirSync(path.join(dir, relative), { withFileTypes: true }).sort(byName);
+    const there = copy === undefined ? undefined : namesIn(path.join(copy.folder, relative), copy.deleted);
     for (const entry of entries) {
       if (SYSTEM_FILES.has(entry.name)) continue;
       const name = relative ? `${relative}/${entry.name}` : entry.name;
-      const copy = copied === undefined ? undefined : path.join(copied, name);
+      const back = there?.has(entry.name) ? path.join(copy!.folder, name) : undefined;
       if (entry.isDirectory()) {
-        if ([...own].some(file => file.startsWith(`${name}/`)) || (copy !== undefined && isRealFolder(copy))) walk(name);
+        if ([...own].some(file => file.startsWith(`${name}/`)) || (back !== undefined && isRealFolder(back))) walk(name);
         else found.push(`${name}/`);
-      } else if (!own.has(name) && !(copy !== undefined && sameEntry(path.join(dir, name), copy))) {
+      } else if (!own.has(name) && !(back !== undefined && sameEntry(path.join(dir, name), back))) {
         found.push(name);
       }
     }
   };
   walk('');
   return found;
+}
+
+/**
+ * The names in a folder of the copy, as they are written, or none when that folder is not
+ * there, or goes too with the folder deleted, like one mounted from it.
+ */
+function namesIn(folder: string, deleted: Set<string>): Set<string> | undefined {
+  const id = identity(folder);
+  if (id === undefined || deleted.has(id)) return undefined;
+  try {
+    return new Set(readdirSync(folder));
+  } catch {
+    return undefined;
+  }
 }
 
 /** A folder itself, not a link to one, as a copy makes it again. */

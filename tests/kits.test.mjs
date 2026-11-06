@@ -5,7 +5,7 @@
 // MAKERSMCP_KIT_PATHS=easyscreenshot=../easyscreenshot,musicfit=../musicfit npm test.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -226,10 +226,10 @@ test('plan_launch_film never deletes a brand folder of the user\'s, and the tool
       assert.equal(entry.annotations.destructiveHint, true, name);
       const when = name === 'make_launch_stills' ? 'for an App Store page' : 'when given brand, or for an App Store page';
       assert.ok(entry.inputSchema.properties.out_dir.description.includes(
-        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds files no kit made.`,
+        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds a file that would be lost.`,
       ), name);
     }
-    assert.match(tools.find(item => item.name === 'plan_launch_film').inputSchema.properties.out_dir.description, /Give that brand\/ folder as brand to use it where it is\.$/);
+    assert.match(tools.find(item => item.name === 'plan_launch_film').inputSchema.properties.out_dir.description, / To use that brand\/ folder where it is, give brand as out_dir with \/brand added, written the same way\.$/);
     assert.equal(tools.find(item => item.name === 'check_video').annotations.destructiveHint, false);
   });
 });
@@ -315,6 +315,99 @@ test('plan_launch_film from a website has easybrandkit make brand/ again where i
     assert.match(text(project), /is not empty and holds no earlier brand kit/);
     assert.deepEqual(files('project/brand'), ['team-logo.svg']);
   }, { kitPaths: { easybrandkit: fakeEasybrandkit } });
+});
+
+test('plan_launch_film refuses a kit that is the brand/ folder by another path, or a folder around it, and loses nothing', { skip: noLaunchFilm }, async () => {
+  await withLaunchFilm(async (client, outDir) => {
+    const write = (file, body) => {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), body);
+    };
+    write('words.json', JSON.stringify(ACME_WORDS));
+    // The team's kit with their notes and logo, and a second path to it through a link to the folder above.
+    write('marketing/brand/brand.json', JSON.stringify(ACME_KIT));
+    write('marketing/brand/notes.md', '# The team notes\n');
+    write('marketing/brand/team-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    symlinkSync(path.join(outDir, 'marketing'), path.join(outDir, 'alias'));
+    // A kit folder that holds a film's folder, with the brand/ copied from it before.
+    write('big/brand.json', JSON.stringify(ACME_KIT));
+    write('big/film/brand/brand.json', JSON.stringify(ACME_KIT));
+    const plan = (brand, out_dir) => client.callTool({
+      name: 'plan_launch_film',
+      arguments: { url: 'https://acme.com', brand, words: 'words.json', out_dir, wait_seconds: 60 },
+    });
+    const files = folder => readdirSync(path.join(outDir, folder)).sort();
+    const team = ['brand.json', 'notes.md', 'team-logo.svg'];
+
+    for (const [brand, out_dir] of [['alias/brand', 'marketing'], ['marketing/brand', 'alias']]) {
+      const aliased = await plan(brand, out_dir);
+      assert.equal(aliased.isError, true, brand);
+      assert.match(text(aliased), /not started[\s\S]*is that same folder under another name, so it would be gone before the copy\. Give brand as .*\/brand to use it where it is\./);
+      assert.deepEqual(files('marketing/brand'), team);
+    }
+    // As the refusal says, the kit then uses the folder where it is.
+    const inPlace = await plan('marketing/brand', 'marketing');
+    assert.equal(inPlace.structuredContent?.status, 'done', text(inPlace));
+    assert.deepEqual(files('marketing/brand'), team);
+
+    const around = await plan('big', 'big/film');
+    assert.equal(around.isError, true);
+    assert.match(text(around), /not started[\s\S]*film\/brand is inside .*big, and a folder cannot be copied into itself\. Give an out_dir outside/);
+    assert.deepEqual(files('big/film/brand'), ['brand.json']);
+  });
+});
+
+// Whether a folder is on a disk that ignores letter case, as macOS and Windows have by default.
+function ignoresCase(folder) {
+  writeFileSync(path.join(folder, 'case.txt'), '');
+  try {
+    return existsSync(path.join(folder, 'CASE.TXT'));
+  } finally {
+    rmSync(path.join(folder, 'case.txt'), { force: true });
+  }
+}
+
+test('on a real disk that ignores letter case, and through a bind mount, a kit given as brand/ by another path loses nothing', { skip: noLaunchFilm }, t => {
+  const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'alias-disk.mjs');
+  const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-alias-'));
+  try {
+    let run;
+    if (ignoresCase(folder)) {
+      run = spawnSync(process.execPath, [fixture, folder], { encoding: 'utf8', timeout: 120_000 });
+    } else if (process.platform === 'linux') {
+      // Linux makes both where only this test sees them: a tmpfs that folds letter case, in a
+      // user and mount namespace of the test's own, where it may mount.
+      const script = 'mount -t tmpfs -o casefold,size=16m makersmcp "$1" && mkdir "$1/ci" && chattr +F "$1/ci" || exit 77\nexec "$2" "$3" "$1/ci" --bind';
+      run = spawnSync('unshare', ['--user', '--map-root-user', '--mount', 'sh', '-c', script, 'sh', folder, process.execPath, fixture], { encoding: 'utf8', timeout: 120_000 });
+      if (run.error || run.status === 77 || /^unshare:/m.test(run.stderr)) {
+        t.skip(`no such disk can be made here: ${(run.error?.message ?? run.stderr).trim().split('\n').pop()}`);
+        return;
+      }
+    } else {
+      t.skip('the temporary folder minds letter case, and no disk that ignores it can be made here');
+      return;
+    }
+    assert.equal(run.status, 0, run.stderr);
+    const calls = run.stdout.trim().split('\n').map(line => JSON.parse(line));
+    const refused = {
+      'kit given in other letters': /is that same folder under another name/,
+      'kit with only its own files, as its brand.json in other letters': /is that same folder under another name/,
+      'kit given through a bind mount': /is that same folder under another name/,
+      'out_dir through a bind mount': /is that same folder under another name/,
+    };
+    for (const call of calls) {
+      if (call.name === 'kit given the way out_dir is') {
+        assert.equal(call.status, 'done', call.said);
+      } else {
+        assert.equal(call.status, 'not started', `${call.name}: ${call.said}`);
+        assert.match(call.said, refused[call.name], call.name);
+      }
+      assert.ok(call.kept, `${call.name}: a file went or changed. ${call.said}`);
+    }
+    assert.ok(calls.length >= 4, run.stdout);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 test('make_launch_stills takes for a film.json what launch-film takes for one, and the rest for an address', { skip: noLaunchFilm }, () => {

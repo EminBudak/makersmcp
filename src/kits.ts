@@ -68,8 +68,9 @@ export interface OutDefinition {
   /**
    * Folders in the folder given with `flag` that the kit deletes and makes again, like
    * brand, each with how to tell one a kit made. makersmcp does not start the kit when it
-   * would delete such a folder while that holds anything else, so nothing of the user's
-   * is deleted.
+   * finds the kit would lose anything else there. It tells folders apart by what the disk
+   * says they are, so another letter case, a link or a mount does not hide one, but it
+   * looks only before the kit starts.
    */
   replaces?: Record<string, ReplacedFolder>;
 }
@@ -89,9 +90,11 @@ export interface ReplacedFolder {
   lists?: string[];
   /**
    * The parameter that gives the kit a folder like this to copy in, as the folder or a
-   * file in it. When that is this folder, the kit uses it where it is and deletes nothing.
-   * Any other, it deletes this folder and copies that one in its place, so a file that one
-   * holds too, byte for byte, comes back.
+   * file in it. When that is this folder by its path, the kit uses it where it is and
+   * deletes nothing. Any other, it deletes this folder and copies that one in its place, so
+   * a file that one holds too under the same name, byte for byte, comes back. This folder
+   * under another path, a folder in it and one around it are refused: the kit would delete
+   * the folder it copies, or copy a folder into itself.
    */
   from?: string;
   /**

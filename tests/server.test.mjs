@@ -616,7 +616,8 @@ test('given a brand kit, a tool replaces brand/ only when that holds a kit\'s ow
       // The kit to use, or another file the call names, is inside the folder it would delete.
       [{ brand: 'site/brand/acme', out_dir: 'site' }, /and .*site\/brand\/acme is inside it/],
       [{ brand: 'kit', words: 'words/brand/words.json', out_dir: 'words' }, /words\/brand\/words\.json is inside it/],
-      [{ brand: 'kit-link', out_dir: 'earlier' }, /kit-link is inside it/],
+      // The kit given through a link to brand/ is brand/ itself, which the kit would delete before the copy.
+      [{ brand: 'kit-link', out_dir: 'earlier' }, /kit-link is that same folder under another name, so it would be gone before the copy\. Give brand as .*earlier\/brand to use it where it is\.$/],
       // A path through a brand/ that is a link leads into the copy once the link is gone.
       [{ brand: 'kit', words: 'mirror/brand/BRAND.md', out_dir: 'mirror' }, /mirror\/brand\/BRAND\.md is inside it/],
       // Through a link, what it leads to counts.
@@ -706,6 +707,172 @@ test('for any other address a tool lets easybrandkit make brand/ again where it 
       /: plan_launch_film makes the brand folder in .*named again, which replaces a kit's own files there and any file named like one, and .*named\/brand holds logo-07\.png and x-profile\.jpg, which its brand\.json does not list\. Give another out_dir, or move those files first\.$/,
     );
     assert.throws(() => call({ source: 'https://acme.com', out_dir: 'named' }, stills), /: make_launch_stills makes the brand folder in .*named again/);
+  });
+});
+
+// A pattern for a path in a message, as it is written.
+const literally = text => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+/**
+ * Runs `callback` while the fs functions makersmcp reads folders with see the files below
+ * `baseDir` the way other disks show them: every name in any letter case, as a disk that
+ * ignores it does (macOS and Windows, by default), or `mounts`, folders shown at a second
+ * place, as a bind mount does. No link gives either away, and realpath keeps such a path
+ * as it is written, as it does there.
+ */
+function asOnDisk(baseDir, { ignoreCase = false, mounts = {} }, callback) {
+  const names = ['existsSync', 'statSync', 'lstatSync', 'readdirSync', 'readFileSync', 'readlinkSync', 'realpathSync'];
+  const original = Object.fromEntries(names.map(name => [name, fs[name]]));
+  const onDisk = file => {
+    if (typeof file !== 'string') return file;
+    const relative = path.relative(baseDir, path.resolve(file));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return file;
+    let parts = relative.split(path.sep);
+    for (const [at, from] of Object.entries(mounts)) {
+      const place = at.split('/');
+      if (place.every((part, i) => parts[i] === part)) parts = [...from.split('/'), ...parts.slice(place.length)];
+    }
+    let found = baseDir;
+    for (const part of parts) {
+      let entries = [];
+      try {
+        if (ignoreCase) entries = original.readdirSync(found);
+      } catch {
+        // Not a folder: the name stays as it is written.
+      }
+      found = path.join(found, entries.find(entry => entry.toLowerCase() === part.toLowerCase()) ?? part);
+    }
+    return found;
+  };
+  for (const name of names) fs[name] = (file, ...rest) => original[name](onDisk(file), ...rest);
+  fs.realpathSync = (file, ...rest) => {
+    const real = original.realpathSync(onDisk(file), ...rest);
+    return real === onDisk(file) ? path.resolve(file) : real;
+  };
+  syncBuiltinESMExports();
+  try {
+    callback();
+  } finally {
+    Object.assign(fs, original);
+    syncBuiltinESMExports();
+  }
+}
+
+// For the tests below, more folders next to those of withBrandFolders: put writes a file,
+// and kitIn copies the earlier kit into a folder, with the files given added to it.
+function addBrandFolders(baseDir) {
+  const put = (file, body = 'ours') => {
+    mkdirSync(path.dirname(path.join(baseDir, file)), { recursive: true });
+    writeFileSync(path.join(baseDir, file), body);
+  };
+  const kitIn = (dir, more = {}) => {
+    fs.cpSync(path.join(baseDir, 'earlier', 'brand'), path.join(baseDir, dir), { recursive: true });
+    for (const [file, body] of Object.entries(more)) put(path.join(dir, file), body);
+  };
+  return { put, kitIn };
+}
+
+test('given brand/ itself by another path, a tool refuses to delete it before the copy, and says how to use it where it is', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { kitIn } = addBrandFolders(baseDir);
+    kitIn('marketing/brand', { 'notes.md': '# The team notes\n', 'team-logo.svg': '<svg/>' });
+    kitIn('pure/brand');
+    // A second path to each through a link to the folder above it.
+    symlinkSync(path.join(baseDir, 'marketing'), path.join(baseDir, 'alias'));
+    symlinkSync(path.join(baseDir, 'pure'), path.join(baseDir, 'pure-alias'));
+    const same = (given, use) => new RegExp(`, and ${literally(path.join(baseDir, given))} is that same folder under another name, so it would be gone before the copy\\. Give brand as ${literally(path.join(baseDir, use))} to use it where it is\\.$`);
+    for (const [input, given, use] of [
+      [{ brand: 'alias/brand', out_dir: 'marketing' }, 'alias/brand', 'marketing/brand'],
+      [{ brand: 'alias/brand/brand.json', out_dir: 'marketing' }, 'alias/brand', 'marketing/brand/brand.json'],
+      [{ brand: 'marketing/brand', out_dir: 'alias' }, 'marketing/brand', 'alias/brand'],
+      // A kit with only its own files would be lost the same way.
+      [{ brand: 'pure-alias/brand', out_dir: 'pure' }, 'pure-alias/brand', 'pure/brand'],
+    ]) assert.throws(() => call(input), same(given, use), JSON.stringify(input));
+    for (const name of ['make_launch_film', 'plan_launch_film']) {
+      assert.throws(() => call({ brand: 'alias/brand', out_dir: 'marketing' }, tool(name)), /is that same folder under another name/, name);
+    }
+    // Given as the refusal says, the kit uses the folder where it is.
+    assert.ok(call({ brand: 'marketing/brand', out_dir: 'marketing' }).args.includes('--brand'));
+    assert.ok(call({ brand: 'alias/brand', out_dir: 'alias' }).args.includes('--brand'));
+  });
+});
+
+// The folders both tests below look at through asOnDisk.
+function withAliasFolders(callback) {
+  withBrandFolders(({ baseDir, call }) => {
+    const { kitIn } = addBrandFolders(baseDir);
+    kitIn('marketing/brand', { 'notes.md': '# The team notes\n', 'team-logo.svg': '<svg/>', 'old/brand.json': JSON.stringify({ version: 1 }) });
+    kitIn('pure/brand');
+    // A copy of kit-with-note in which the note has another letter case.
+    fs.cpSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'recased', 'brand'), { recursive: true });
+    fs.renameSync(path.join(baseDir, 'recased', 'brand', 'notes.md'), path.join(baseDir, 'recased', 'brand', 'Notes.md'));
+    callback({ baseDir, call });
+  });
+}
+
+const SAME = /, and .* is that same folder under another name, so it would be gone before the copy\. Give brand as .* to use it where it is\.$/;
+
+test('on a disk that ignores letter case, brand/ given in other letters is still brand/, and a file in it is still in it', () => {
+  withAliasFolders(({ baseDir, call }) => {
+    asOnDisk(baseDir, { ignoreCase: true }, () => {
+      for (const input of [
+        { brand: 'marketing/brand', out_dir: 'Marketing' },
+        { brand: 'MARKETING/BRAND', out_dir: 'marketing' },
+        { brand: 'Marketing/Brand/brand.json', out_dir: 'marketing' },
+        { brand: 'pure/brand', out_dir: 'PURE' },
+      ]) assert.throws(() => call(input), SAME, JSON.stringify(input));
+      assert.throws(() => call({ brand: 'Marketing/brand/old', out_dir: 'marketing' }), /Marketing\/brand\/old is inside it\. Give another out_dir/);
+      // A file the call names is in the folder deleted, however its path is written.
+      assert.throws(() => call({ url: STORE, words: 'Earlier/Brand/facts.json', out_dir: 'earlier' }), /Earlier\/Brand\/facts\.json is inside it\./);
+      // A copy brings back a file under its very name only.
+      assert.throws(() => call({ brand: 'kit-with-note', out_dir: 'recased' }), /recased\/brand holds Notes\.md, which its brand\.json does not list and the copy would not bring back\./);
+      assert.ok(call({ brand: 'kit-with-note', out_dir: 'copies' }).args.includes('--brand'));
+      assert.ok(call({ brand: 'Marketing/brand', out_dir: 'Marketing' }).args.includes('--brand'));
+    });
+  });
+});
+
+test('through a mount, brand/ given at the other place is still brand/, and a file in it is still in it', () => {
+  withAliasFolders(({ baseDir, call }) => {
+    asOnDisk(baseDir, { mounts: { alias: 'marketing', 'pure-mount': 'pure', whole: 'marketing/brand', inner: 'marketing/brand/old' } }, () => {
+      for (const input of [
+        { brand: 'alias/brand', out_dir: 'marketing' },
+        { brand: 'marketing/brand', out_dir: 'alias' },
+        { brand: 'whole', out_dir: 'marketing' },
+        { brand: 'pure-mount/brand/brand.json', out_dir: 'pure' },
+      ]) assert.throws(() => call(input), SAME, JSON.stringify(input));
+      assert.throws(() => call({ brand: 'inner', out_dir: 'marketing' }), /inner is inside it\./);
+      assert.throws(() => call({ url: STORE, words: 'pure-mount/brand/BRAND.md', out_dir: 'pure' }), /pure-mount\/brand\/BRAND\.md is inside it\./);
+      assert.ok(call({ url: STORE, out_dir: 'pure' }).args.includes('--out'));
+    });
+  });
+});
+
+test('a tool refuses to copy a kit folder into a folder inside it, which deletes brand/ before the copy fails', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { kitIn } = addBrandFolders(baseDir);
+    // A kit folder that holds a film's folder, with a brand/ copied from it before.
+    kitIn('big');
+    kitIn('big/film/brand');
+    symlinkSync(path.join(baseDir, 'big'), path.join(baseDir, 'big-link'));
+    const refusal = (dir, kit) => new RegExp(`, and ${literally(path.join(baseDir, dir))} is inside ${literally(path.join(baseDir, kit))}, and a folder cannot be copied into itself\\. Give an out_dir outside ${literally(path.join(baseDir, kit))}\\.$`);
+    for (const [input, dir, kit] of [
+      [{ brand: 'big', out_dir: 'big/film' }, 'big/film/brand', 'big'],
+      [{ brand: 'big/brand.json', out_dir: 'big/new' }, 'big/new/brand', 'big'],
+      [{ brand: 'big', out_dir: 'big' }, 'big/brand', 'big'],
+      [{ brand: 'big-link', out_dir: 'big/film' }, 'big/film/brand', 'big-link'],
+      [{ brand: 'big', out_dir: 'big-link/film' }, 'big-link/film/brand', 'big'],
+    ]) assert.throws(() => call(input), refusal(dir, kit), JSON.stringify(input));
+    assert.ok(call({ brand: 'big', out_dir: 'elsewhere-film' }).args.includes('--brand'));
+  });
+});
+
+test('a copy brings back a file by its bytes, a hard link of it too, never by being the same file', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    fs.cpSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'hardlinked', 'brand'), { recursive: true });
+    rmSync(path.join(baseDir, 'hardlinked', 'brand', 'notes.md'));
+    fs.linkSync(path.join(baseDir, 'kit-with-note', 'notes.md'), path.join(baseDir, 'hardlinked', 'brand', 'notes.md'));
+    assert.ok(call({ brand: 'kit-with-note', out_dir: 'hardlinked' }).args.includes('--brand'));
   });
 });
 
