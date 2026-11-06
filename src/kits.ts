@@ -106,7 +106,9 @@ export interface ReplacedFolder {
   /**
    * The other names a kit writes in such a folder, as a regular expression matched in
    * full, like logo-\d+\.png. Making the folder again where it is, the kit replaces a file
-   * with such a name even when the marker does not list it.
+   * with such a name even when the marker does not list it, and on a disk that ignores
+   * letter case one with such a name in other letters, so makersmcp matches these names,
+   * the marker and `files` in any letter case.
    */
   names?: string;
 }

@@ -704,7 +704,7 @@ test('for any other address a tool lets easybrandkit make brand/ again where it 
     // A file of the user's named like one easybrandkit writes would be replaced, or deleted when the run fails.
     assert.throws(
       () => call({ out_dir: 'named' }),
-      /: plan_launch_film makes the brand folder in .*named again, which replaces a kit's own files there and any file named like one, and .*named\/brand holds logo-07\.png and x-profile\.jpg, which its brand\.json does not list\. Give another out_dir, or move those files first\.$/,
+      /: plan_launch_film makes the brand folder in .*named again, which replaces a kit's own files there and any file named like one in any letter case, and .*named\/brand holds logo-07\.png and x-profile\.jpg, which its brand\.json does not list\. Give another out_dir, or move those files first\.$/,
     );
     assert.throws(() => call({ source: 'https://acme.com', out_dir: 'named' }, stills), /: make_launch_stills makes the brand folder in .*named again/);
   });
@@ -716,11 +716,12 @@ const literally = text => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 /**
  * Runs `callback` while the fs functions makersmcp reads folders with see the files below
  * `baseDir` the way other disks show them: every name in any letter case, as a disk that
- * ignores it does (macOS and Windows, by default), or `mounts`, folders shown at a second
- * place, as a bind mount does. No link gives either away, and realpath keeps such a path
- * as it is written, as it does there.
+ * ignores it does (macOS and Windows, by default), `mounts`, folders shown at a second
+ * place, as a bind mount does, or `otherDisks`, folders that are another disk mounted there.
+ * No link gives any of them away, and realpath keeps such a path as it is written, as it
+ * does there.
  */
-function asOnDisk(baseDir, { ignoreCase = false, mounts = {} }, callback) {
+function asOnDisk(baseDir, { ignoreCase = false, mounts = {}, otherDisks = [] }, callback) {
   const names = ['existsSync', 'statSync', 'lstatSync', 'readdirSync', 'readFileSync', 'readlinkSync', 'realpathSync'];
   const original = Object.fromEntries(names.map(name => [name, fs[name]]));
   const onDisk = file => {
@@ -749,6 +750,17 @@ function asOnDisk(baseDir, { ignoreCase = false, mounts = {} }, callback) {
     const real = original.realpathSync(onDisk(file), ...rest);
     return real === onDisk(file) ? path.resolve(file) : real;
   };
+  const onOtherDisk = file => otherDisks.some(at => {
+    const relative = path.relative(path.join(baseDir, at), original.realpathSync(onDisk(file)));
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  });
+  for (const name of ['statSync', 'lstatSync']) {
+    fs[name] = (file, ...rest) => {
+      const stats = original[name](onDisk(file), ...rest);
+      if (!stats || !onOtherDisk(file)) return stats;
+      return Object.assign(Object.create(Object.getPrototypeOf(stats)), stats, { dev: typeof stats.dev === 'bigint' ? stats.dev + 1n : stats.dev + 1 });
+    };
+  }
   syncBuiltinESMExports();
   try {
     callback();
@@ -873,6 +885,86 @@ test('a copy brings back a file by its bytes, a hard link of it too, never by be
     rmSync(path.join(baseDir, 'hardlinked', 'brand', 'notes.md'));
     fs.linkSync(path.join(baseDir, 'kit-with-note', 'notes.md'), path.join(baseDir, 'hardlinked', 'brand', 'notes.md'));
     assert.ok(call({ brand: 'kit-with-note', out_dir: 'hardlinked' }).args.includes('--brand'));
+  });
+});
+
+test('from a website, a file named like a kit\'s own in other letters stops the tool, on any disk', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { put, kitIn } = addBrandFolders(baseDir);
+    const cases = [
+      ['cards', ['Card.png', 'Logo-03.PNG'], 'Card\\.png and Logo-03\\.PNG'],
+      ['marks', ['Brand.md', 'FACTS.MD'], 'Brand\\.md and FACTS\\.MD'],
+      ['marker', ['Brand.json'], 'Brand\\.json'],
+      ['profiles', ['X-Profile.jpg', 'LinkedIn-Icon.PNG'], 'LinkedIn-Icon\\.PNG and X-Profile\\.jpg'],
+      ['page-case', ['pages/Home.md', 'pages/ABOUT.md'], 'pages/ABOUT\\.md and pages/Home\\.md'],
+      // A folder of the user's where the kit writes a file of its own.
+      ['folder-named', [], 'BRAND\\.md/'],
+    ];
+    for (const [dir, files] of cases) kitIn(`${dir}/brand`, Object.fromEntries(files.map(file => [file, 'ours'])));
+    rmSync(path.join(baseDir, 'folder-named', 'brand', 'BRAND.md'));
+    put('folder-named/brand/BRAND.md/notes.md');
+    for (const [dir, , names] of cases) {
+      assert.throws(() => call({ out_dir: dir }), new RegExp(`any file named like one in any letter case, and .*${dir}/brand holds ${names}, which its brand\\.json does not list\\. Give another out_dir`), dir);
+      assert.throws(() => call({ source: 'https://acme.com', out_dir: dir }, tool('make_launch_stills')), /holds .*, which its brand\.json does not list/, dir);
+    }
+    // The kit's own files, as it writes them, and the files of the user's beside them.
+    kitIn('own/brand', { 'notes.md': 'ours', 'pages/roadmap.md': 'ours', 'drafts/logo-01.png': 'ours' });
+    assert.ok(call({ out_dir: 'own' }).args.includes('--out'));
+  });
+});
+
+test('from a website, a link, a file or another disk where the kit keeps a folder of its own files stops the tool, in every such folder', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { put, kitIn } = addBrandFolders(baseDir);
+    const pages = dir => path.join(baseDir, dir, 'brand', 'pages');
+    put('team-pages/home.md', '# Our home page\n');
+    put('team-pages/about.md', '# About us\n');
+    kitIn('linked-pages/brand');
+    rmSync(pages('linked-pages'), { recursive: true });
+    symlinkSync(path.join(baseDir, 'team-pages'), pages('linked-pages'));
+    kitIn('file-pages/brand');
+    rmSync(pages('file-pages'), { recursive: true });
+    writeFileSync(pages('file-pages'), 'a file');
+    kitIn('case-pages/brand');
+    fs.renameSync(pages('case-pages'), path.join(baseDir, 'case-pages', 'brand', 'Pages'));
+    for (const [dir, why] of [
+      ['linked-pages', 'linked-pages/brand/pages is a link, so the kit would delete files named like its own where it leads'],
+      ['file-pages', 'file-pages/brand/pages is a file where the kit keeps its pages folder'],
+      ['case-pages', 'case-pages/brand/Pages is named like the kit\'s pages folder in other letters, which a disk that ignores letter case takes for that one'],
+    ]) assert.throws(() => call({ out_dir: dir }), new RegExp(`any file named like one in any letter case, and .*${literally(why)}\\. Give another out_dir, or move those files first\\.$`), dir);
+    assert.deepEqual(fs.readdirSync(path.join(baseDir, 'team-pages')).sort(), ['about.md', 'home.md']);
+
+    // brand/ itself as a link: the kit makes the kit again where it leads, so the same holds there.
+    kitIn('team-kit', { 'notes.md': '# Kept\n' });
+    kitIn('team-kit-cased', { 'Card.png': 'ours' });
+    for (const [dir, to] of [['shared', 'team-kit'], ['shared-cased', 'team-kit-cased'], ['shared-pages', 'linked-pages/brand']]) {
+      mkdirSync(path.join(baseDir, dir));
+      symlinkSync(path.join(baseDir, to), path.join(baseDir, dir, 'brand'));
+    }
+    assert.ok(call({ out_dir: 'shared' }).args.includes('--out'));
+    assert.throws(() => call({ out_dir: 'shared-cased' }), /shared-cased\/brand holds Card\.png, which/);
+    assert.throws(() => call({ out_dir: 'shared-pages' }), /shared-pages\/brand\/pages is a link/);
+
+    // Any folder the kit keeps files in, as its definition lists them, not only pages/.
+    const deep = structuredClone(tool('plan_launch_film'));
+    deep.out.replaces.brand.files.push('assets/icons/app.png');
+    kitIn('deep/brand', { 'assets/icons/app.png': 'kit', 'assets/notes.md': 'ours' });
+    assert.ok(call({ out_dir: 'deep' }, deep).args.includes('--out'));
+    kitIn('deep-linked/brand', { 'assets/notes.md': 'ours' });
+    symlinkSync(path.join(baseDir, 'team-pages'), path.join(baseDir, 'deep-linked', 'brand', 'assets', 'icons'));
+    assert.throws(() => call({ out_dir: 'deep-linked' }, deep), /deep-linked\/brand\/assets\/icons is a link, so the kit would delete files/);
+    kitIn('deep-top/brand');
+    symlinkSync(path.join(baseDir, 'team-pages'), path.join(baseDir, 'deep-top', 'brand', 'assets'));
+    assert.throws(() => call({ out_dir: 'deep-top' }, deep), /deep-top\/brand\/assets is a link, so the kit would delete files/);
+    kitIn('deep-cased/brand', { 'assets/icons/App.png': 'ours' });
+    assert.throws(() => call({ out_dir: 'deep-cased' }, deep), /deep-cased\/brand holds assets\/icons\/App\.png, which its brand\.json does not list/);
+
+    // Another disk mounted where the kit keeps its pages is another place too; one where brand/ leads is not.
+    kitIn('mounted-pages/brand');
+    asOnDisk(baseDir, { otherDisks: ['mounted-pages/brand/pages', 'team-kit'] }, () => {
+      assert.throws(() => call({ out_dir: 'mounted-pages' }), /mounted-pages\/brand\/pages is another disk mounted there, so the kit would delete files named like its own on it\./);
+      assert.ok(call({ out_dir: 'shared' }).args.includes('--out'));
+    });
   });
 });
 

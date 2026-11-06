@@ -226,7 +226,8 @@ test('plan_launch_film never deletes a brand folder of the user\'s, and the tool
       assert.equal(entry.annotations.destructiveHint, true, name);
       const when = name === 'make_launch_stills' ? 'for an App Store page' : 'when given brand, or for an App Store page';
       assert.ok(entry.inputSchema.properties.out_dir.description.includes(
-        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds a file that would be lost.`,
+        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds a file that would be lost.`
+        + ' Otherwise it makes the kit in brand/ again where it is, so it does not start while brand/ holds a file named like a kit\'s own, in any letter case, that its brand.json does not list.',
       ), name);
     }
     assert.match(tools.find(item => item.name === 'plan_launch_film').inputSchema.properties.out_dir.description, / To use that brand\/ folder where it is, give brand as out_dir with \/brand added, written the same way\.$/);
@@ -357,6 +358,43 @@ test('plan_launch_film refuses a kit that is the brand/ folder by another path, 
   });
 });
 
+test('plan_launch_film from a website refuses a kit folder with a file named like a kit\'s own in other letters, or with pages/ a link, and loses nothing', { skip: noLaunchFilm }, async () => {
+  await withLaunchFilm(async (client, outDir) => {
+    const write = (file, body) => {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), body);
+    };
+    write('words.json', JSON.stringify(ACME_WORDS));
+    // A kit easybrandkit made, with the team's card and logo next to its own logo.
+    write('cards/brand/brand.json', JSON.stringify({ ...ACME_KIT, logos: [{ file: 'logo-01.png' }] }));
+    write('cards/brand/logo-01.png', 'kit logo');
+    write('cards/brand/Card.png', 'THE TEAM CARD');
+    write('cards/brand/Logo-02.PNG', 'THE TEAM LOGO');
+    // A kit whose pages/ is the team's own folder of pages.
+    write('team-pages/home.md', '# Our home page\n');
+    write('team-pages/about.md', '# About us\n');
+    write('team-pages/roadmap.md', '# Roadmap\n');
+    write('paged/brand/brand.json', JSON.stringify(ACME_KIT));
+    symlinkSync(path.join(outDir, 'team-pages'), path.join(outDir, 'paged', 'brand', 'pages'));
+    const plan = out_dir => client.callTool({
+      name: 'plan_launch_film',
+      arguments: { url: 'https://acme.com', words: 'words.json', out_dir, wait_seconds: 60 },
+    });
+
+    const cards = await plan('cards');
+    assert.equal(cards.isError, true);
+    assert.match(text(cards), /not started[\s\S]*cards\/brand holds Card\.png and Logo-02\.PNG, which its brand\.json does not list/);
+    assert.equal(readFileSync(path.join(outDir, 'cards', 'brand', 'Card.png'), 'utf8'), 'THE TEAM CARD');
+    assert.equal(readFileSync(path.join(outDir, 'cards', 'brand', 'Logo-02.PNG'), 'utf8'), 'THE TEAM LOGO');
+    assert.equal(readFileSync(path.join(outDir, 'cards', 'brand', 'logo-01.png'), 'utf8'), 'kit logo');
+
+    const paged = await plan('paged');
+    assert.equal(paged.isError, true);
+    assert.match(text(paged), /not started[\s\S]*paged\/brand\/pages is a link, so the kit would delete files named like its own where it leads/);
+    assert.deepEqual(readdirSync(path.join(outDir, 'team-pages')).sort(), ['about.md', 'home.md', 'roadmap.md']);
+  }, { kitPaths: { easybrandkit: fakeEasybrandkit } });
+});
+
 // Whether a folder is on a disk that ignores letter case, as macOS and Windows have by default.
 function ignoresCase(folder) {
   writeFileSync(path.join(folder, 'case.txt'), '');
@@ -392,8 +430,10 @@ test('on a real disk that ignores letter case, and through a bind mount, a kit g
     const refused = {
       'kit given in other letters': /is that same folder under another name/,
       'kit with only its own files, as its brand.json in other letters': /is that same folder under another name/,
+      'website, the team card named like the kit card': /site\/brand holds Card\.png, which its brand\.json does not list/,
       'kit given through a bind mount': /is that same folder under another name/,
       'out_dir through a bind mount': /is that same folder under another name/,
+      'website, pages/ another disk': /mounted\/brand\/pages is another disk mounted there, so the kit would delete files named like its own on it/,
     };
     for (const call of calls) {
       if (call.name === 'kit given the way out_dir is') {

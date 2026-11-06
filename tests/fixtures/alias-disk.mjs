@@ -1,6 +1,6 @@
 // plan_launch_film with the real launch-film on a disk that ignores letter case, and with
-// --bind through a bind mount, which only a caller that may mount makes (root, or root in
-// a user namespace of its own). Each call gives the brand/ folder by another path than the
+// --bind through a bind mount and with another disk mounted in a kit, which only a caller
+// that may mount makes (root, or root in a user namespace of its own). Each call gives the brand/ folder by another path than the
 // one launch-film compares, and prints one JSON line: what the tool said, and whether every
 // file it might have deleted is still there, as it was.
 // Usage: node alias-disk.mjs <empty folder on a disk that ignores letter case> [--bind]
@@ -26,11 +26,14 @@ write('words.json', JSON.stringify({
   headings: [{ level: 1, text: 'Widgets for every team' }, { level: 2, text: 'Fast setup' }, { level: 2, text: 'Clear pricing' }],
   ctas: [], paragraphs: [], jsonld: [],
 }));
-// The team's kit with their notes and logo, and a kit with only its own files.
+// The team's kit with their notes and logo, a kit with only its own files, and a kit
+// easybrandkit made with the team's card next to it.
 write('marketing/brand/brand.json', JSON.stringify(kit));
 write('marketing/brand/notes.md', '# The team notes\n');
 write('marketing/brand/team-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
 write('pure/brand/brand.json', JSON.stringify(kit));
+write('site/brand/brand.json', JSON.stringify(kit));
+write('site/brand/Card.png', 'THE TEAM CARD');
 
 // Every file below a folder with what it holds, to tell whether a call lost any.
 const snapshot = folder => {
@@ -63,12 +66,20 @@ const plan = async (name, args, watch) => {
 await plan('kit given in other letters', { brand: 'marketing/brand', out_dir: 'Marketing' }, 'marketing/brand');
 await plan('kit with only its own files, as its brand.json in other letters', { brand: 'PURE/BRAND/brand.json', out_dir: 'pure' }, 'pure/brand');
 await plan('kit given the way out_dir is', { brand: 'Marketing/brand', out_dir: 'Marketing' }, 'marketing/brand');
+await plan('website, the team card named like the kit card', { out_dir: 'site', brand: undefined }, 'site/brand');
 if (bind) {
   mkdirSync(path.join(base, 'alias'));
   const mounted = spawnSync('mount', ['--bind', path.join(base, 'marketing'), path.join(base, 'alias')], { encoding: 'utf8' });
   if (mounted.status !== 0) throw new Error(`mount --bind failed: ${mounted.stderr}`);
   await plan('kit given through a bind mount', { brand: 'alias/brand', out_dir: 'marketing' }, 'marketing/brand');
   await plan('out_dir through a bind mount', { brand: 'marketing/brand', out_dir: 'alias' }, 'marketing/brand');
+  // A kit whose pages/ is another disk, which holds the team's pages.
+  write('mounted/brand/brand.json', JSON.stringify(kit));
+  mkdirSync(path.join(base, 'mounted', 'brand', 'pages'));
+  const disk = spawnSync('mount', ['-t', 'tmpfs', '-o', 'size=1m', 'pages', path.join(base, 'mounted', 'brand', 'pages')], { encoding: 'utf8' });
+  if (disk.status !== 0) throw new Error(`mount -t tmpfs failed: ${disk.stderr}`);
+  write('mounted/brand/pages/home.md', '# Our home page\n');
+  await plan('website, pages/ another disk', { out_dir: 'mounted', brand: undefined }, 'mounted/brand/pages');
 }
 await client.close();
 await server.close();

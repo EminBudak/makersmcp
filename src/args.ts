@@ -200,7 +200,8 @@ function nothingAt(name: string, param: ParamDefinition, full: string, text: str
  * files and files the copy brings back, and no file the call names. The same goes when it
  * deletes the folder to make its own, on every call or for the addresses in `addresses`.
  * For any other address the kit makes the folder again where it is, keeping what is not
- * a kit's, so only a file with a name it writes (`names`) stops it.
+ * a kit's, so only a file with a name it writes (`names`) in any letter case, or a link,
+ * a file or another disk where it keeps a folder of its own files, stops it.
  */
 function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<string, unknown>, files: string[]): void {
   for (const [name, kind] of Object.entries(tool.out?.replaces ?? {})) {
@@ -232,7 +233,7 @@ function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<st
       }
     } else if (kind.addresses && !addressesOf(tool, values).some(address => inFull(kind.addresses!.pattern).test(address))) {
       if (kind.names === undefined) continue;
-      how = `makes the ${name} folder in ${folder} again, which replaces a kit's own files there and any file named like one`;
+      how = `makes the ${name} folder in ${folder} again, which replaces a kit's own files there and any file named like one in any letter case`;
       why = namedLikeOwn(dir, kind);
     } else {
       how = `replaces the ${name} folder in ${folder} with its own${kind.addresses ? ` for ${kind.addresses.about}` : ''}, deleting what is there`;
@@ -432,22 +433,67 @@ function kitMarker(dir: string, kind: ReplacedFolder): KitMarker {
 }
 
 /**
- * In a folder the kit makes again where it is: the files its marker does not list that
- * have a name the kit writes, in words, since the kit replaces them. Nothing when the
- * folder holds no kit, which such a kit does not start in.
+ * A name the way a disk that ignores letter case compares it, as near as can be told:
+ * its accents in one form, without the marks some disks leave out, in small letters.
+ */
+function folded(name: string): string {
+  return name.normalize('NFC').replace(/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g, '').toUpperCase().toLowerCase();
+}
+
+/**
+ * In a folder the kit makes again where it is: what of it the kit would replace or
+ * delete that is not a kit's own, in words. The kit writes and deletes its files by name,
+ * and on a disk that ignores letter case a name in other letters is the same file, so a
+ * name counts in any letter case here, and only one written the way the kit writes it is
+ * a kit's own. Where the kit keeps a folder of its files, like pages, a link, a file or
+ * another disk mounted there would have it delete or write files elsewhere, and a folder
+ * by that name in other letters holds none of its own. Nothing when the folder holds no
+ * kit, which such a kit does not start in.
  */
 function namedLikeOwn(dir: string, kind: ReplacedFolder): string | undefined {
-  let entries: string[];
   try {
-    entries = readdirSync(dir);
+    if (!readdirSync(dir).length) return undefined;
   } catch {
     return undefined;
   }
   const marker = kitMarker(dir, kind);
   if (!('own' in marker)) return undefined;
-  const names = inFull(kind.names);
-  const found = entries.filter(entry => !marker.own.has(entry) && names.test(entry)).sort();
-  return found.length ? `${dir} holds ${namesInWords(found)}, which its ${kind.marker} does not list` : undefined;
+  const own = marker.own;
+  const written = new Set([...own].map(folded));
+  // The folders the kit's own files are in, like pages for pages/home.md, as the kit writes them.
+  const places = new Map([...own].flatMap(file => file.split('/').slice(0, -1)
+    .map((_, i, parts) => parts.slice(0, i + 1).join('/'))).map(place => [folded(place), place]));
+  const names = new RegExp(`^(?:${kind.names ?? '(?!)'})$`, 'i');
+  const found: string[] = [];
+  let elsewhere: string | undefined;
+  const walk = (relative: string) => {
+    for (const entry of readdirSync(path.join(dir, relative), { withFileTypes: true }).sort(byName)) {
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      const key = folded(name);
+      const place = places.get(key);
+      const full = path.join(dir, name);
+      if (place === name && entry.isDirectory()) {
+        // A disk mounted there is another place, as a link is. One mounted from the same disk looks like any folder.
+        if (lstatSync(full).dev === statSync(path.join(dir, relative)).dev) walk(name);
+        else elsewhere ??= `${full} is another disk mounted there, so the kit would delete files named like its own on it`;
+      } else if (place !== undefined) {
+        elsewhere ??= entry.isSymbolicLink()
+          ? `${full} is a link, so the kit would delete files named like its own where it leads`
+          : entry.isDirectory()
+            ? `${full} is named like the kit's ${place} folder in other letters, which a disk that ignores letter case takes for that one`
+            : `${full} is a file where the kit keeps its ${place} folder`;
+      } else if (written.has(key) || (!relative && names.test(folded(entry.name)))) {
+        if (!own.has(name) || entry.isDirectory()) found.push(entry.isDirectory() ? `${name}/` : name);
+      }
+    }
+  };
+  try {
+    walk('');
+  } catch {
+    return `${dir} cannot be read`;
+  }
+  const why = [found.length ? `${dir} holds ${namesInWords(found)}, which its ${kind.marker} does not list` : undefined, elsewhere];
+  return why.filter(Boolean).join(', and ') || undefined;
 }
 
 /**
