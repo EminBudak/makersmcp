@@ -57,7 +57,10 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "easybrandkit": "^0.4.0",
+    "easyfontkit": "^0.1.1",
+    "easyscreenshotkit": "^0.1.1",
     "launch-film": "^0.2.0",
+    "musicfit": "^0.1.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

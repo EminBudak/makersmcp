@@ -1,8 +1,7 @@
-// The kit definitions in kits/ against the kits themselves. The bounds of every number
-// are tried with each installed kit's own parser, so a schema never offers a value the
-// kit refuses. easybrandkit and launch-film are dependencies; the other kits run when
-// MAKERSMCP_KIT_PATHS names their checkouts, the way the CLI takes it, like
-// MAKERSMCP_KIT_PATHS=easyscreenshotkit=../easyscreenshotkit,musicfit=../musicfit npm test.
+// The kit definitions in kits/ against the kits themselves. Every kit is a dependency, and
+// the bounds of every number are tried with each kit's own parser, so a schema never offers
+// a value the kit refuses. MAKERSMCP_KIT_PATHS runs a kit's checkout instead of its package,
+// the way the CLI takes it, like MAKERSMCP_KIT_PATHS=musicfit=../musicfit npm test.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -20,6 +19,13 @@ const kitPaths = Object.fromEntries((process.env.MAKERSMCP_KIT_PATHS ?? '').spli
 const kits = loadKitDefinitions();
 const text = result => result.content.map(item => item.text).join('\n');
 const hasFfmpeg = ['ffmpeg', 'ffprobe'].every(name => spawnSync(name, ['-version'], { stdio: 'ignore' }).status === 0);
+
+test('every kit in kits/ comes with makersmcp, and every other dependency is a library makersmcp uses', () => {
+  const { dependencies } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const kit of kits) assert.ok(dependencies[kit.package], `${kit.package} is not in the dependencies in package.json`);
+  const others = Object.keys(dependencies).filter(name => !kits.some(kit => kit.package === name)).sort();
+  assert.deepEqual(others, ['@modelcontextprotocol/sdk', 'zod'], 'a dependency that is no kit\'s: add its kit to kits/, or remove it');
+});
 
 test('every check tool says what its report is, so a kit error is not taken for a failed check', () => {
   for (const kit of kits) {
@@ -106,11 +112,9 @@ function tinyVideo(folder) {
 
 for (const kit of kits) {
   const installed = resolveKit(kit, kitPaths);
-  const skip = installed.script
-    ? false
-    : `${kit.kit} is not installed here (${installed.reason}); give its checkout in MAKERSMCP_KIT_PATHS`;
 
-  test(`${kit.kit}: the kit takes every number at the bounds its tools offer`, { skip }, () => {
+  test(`${kit.kit}: the kit takes every number at the bounds its tools offer`, () => {
+    assert.ok(installed.script, `${kit.kit} cannot run here: ${installed.reason}`);
     const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-kits-'));
     try {
       const run = (tool, extra) => {
@@ -164,9 +168,8 @@ async function withLaunchFilm(callback, options = {}) {
 }
 
 const launchFilm = resolveKit(kits.find(kit => kit.kit === 'launch-film'));
-const noLaunchFilm = launchFilm.script ? false : 'launch-film is not installed';
 
-test('plan_launch_film never deletes a brand folder of the user\'s, and the tools say they may replace one', { skip: noLaunchFilm }, async () => {
+test('plan_launch_film never deletes a brand folder of the user\'s, and the tools say they may replace one', async () => {
   await withLaunchFilm(async (client, outDir) => {
     const write = (file, body) => {
       mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
@@ -244,7 +247,7 @@ const ACME_WORDS = {
 };
 const fakeEasybrandkit = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-easybrandkit');
 
-test('plan_launch_film plans again from the kit folder it copied, with the files that folder holds', { skip: noLaunchFilm }, async () => {
+test('plan_launch_film plans again from the kit folder it copied, with the files that folder holds', async () => {
   await withLaunchFilm(async (client, outDir) => {
     const write = (file, body) => {
       mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
@@ -278,7 +281,7 @@ test('plan_launch_film plans again from the kit folder it copied, with the files
   });
 });
 
-test('plan_launch_film from a website has easybrandkit make brand/ again where it is, keeping a file of the user\'s', { skip: noLaunchFilm }, async () => {
+test('plan_launch_film from a website has easybrandkit make brand/ again where it is, keeping a file of the user\'s', async () => {
   await withLaunchFilm(async (client, outDir) => {
     const write = (file, body) => {
       mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
@@ -318,7 +321,7 @@ test('plan_launch_film from a website has easybrandkit make brand/ again where i
   }, { kitPaths: { easybrandkit: fakeEasybrandkit } });
 });
 
-test('plan_launch_film refuses a kit that is the brand/ folder by another path, or a folder around it, and loses nothing', { skip: noLaunchFilm }, async () => {
+test('plan_launch_film refuses a kit that is the brand/ folder by another path, or a folder around it, and loses nothing', async () => {
   await withLaunchFilm(async (client, outDir) => {
     const write = (file, body) => {
       mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
@@ -369,7 +372,7 @@ test('plan_launch_film refuses a kit that is the brand/ folder by another path, 
   });
 });
 
-test('plan_launch_film from a website refuses a kit folder with a file named like a kit\'s own in other letters, or with pages/ a link, and loses nothing', { skip: noLaunchFilm }, async () => {
+test('plan_launch_film from a website refuses a kit folder with a file named like a kit\'s own in other letters, or with pages/ a link, and loses nothing', async () => {
   await withLaunchFilm(async (client, outDir) => {
     const write = (file, body) => {
       mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
@@ -416,7 +419,7 @@ function ignoresCase(folder) {
   }
 }
 
-test('on a real disk that ignores letter case, and through a bind mount, a kit given as brand/ by another path loses nothing', { skip: noLaunchFilm }, t => {
+test('on a real disk that ignores letter case, and through a bind mount, a kit given as brand/ by another path loses nothing', t => {
   const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'alias-disk.mjs');
   const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-alias-'));
   try {
@@ -462,7 +465,7 @@ test('on a real disk that ignores letter case, and through a bind mount, a kit g
   }
 });
 
-test('make_launch_stills takes for a film.json what launch-film takes for one, and the rest for an address', { skip: noLaunchFilm }, () => {
+test('make_launch_stills takes for a film.json what launch-film takes for one, and the rest for an address', () => {
   const stills = kits.find(kit => kit.kit === 'launch-film').tools.find(tool => tool.name === 'make_launch_stills');
   const asFile = new RegExp(`^(?:${stills.params.source.filePattern})$`);
   const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-kits-'));
@@ -536,7 +539,7 @@ test('what launch-film\'s tools take for a brand kit\'s own files, easybrandkit 
   }
 });
 
-test('check_video on a file that is not a video is an error, not a failed check, and shows no old report', { skip: noLaunchFilm }, async () => {
+test('check_video on a file that is not a video is an error, not a failed check, and shows no old report', async () => {
   await withLaunchFilm(async (client, outDir) => {
     writeFileSync(path.join(outDir, 'notes.txt'), 'not a video');
     mkdirSync(path.join(outDir, 'check'));
@@ -551,7 +554,7 @@ test('check_video on a file that is not a video is an error, not a failed check,
   });
 });
 
-test('check_video on a real video is a check, passed or failed, with its CHECK.md', { skip: noLaunchFilm || (!hasFfmpeg && 'ffmpeg is not installed') }, async () => {
+test('check_video on a real video is a check, passed or failed, with its CHECK.md', { skip: !hasFfmpeg && 'ffmpeg is not installed' }, async () => {
   await withLaunchFilm(async (client, outDir) => {
     tinyVideo(outDir);
     const result = await client.callTool({ name: 'check_video', arguments: { film: 'tiny.mp4', lufs: -14, wait_seconds: 60 } });

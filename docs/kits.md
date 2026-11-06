@@ -1,6 +1,6 @@
 # How a kit plugs in
 
-A kit is a command line tool with its own repository and npm package. makersmcp runs it with Node as a child process and knows it only through its JSON file in `kits/`. This is easybrandkit's, shortened:
+A kit is a command line tool with its own repository and npm package. makersmcp has that package in its `dependencies`, so the kit comes with it. makersmcp runs it with Node as a child process and knows it only through its JSON file in `kits/`. This is easybrandkit's, shortened:
 
 ```json
 {
@@ -71,8 +71,8 @@ Each kit runs in a process group of its own, with the browser and ffmpeg it star
 ## Adding one
 
 1. Write its file in `kits/`.
-2. Add its package to `dependencies` in `package.json`.
+2. Once its package is on npm, add it to `dependencies` in `package.json`, so the kit comes with makersmcp.
 3. In `tests/kits.test.mjs`, say how the kit reads its arguments without a browser (its dry run) and one value it refuses.
-4. Run `npm test`, which checks every file in `kits/` and tries each number's bounds with every kit that is installed.
+4. Run `npm test`, which checks every file in `kits/`, fails while those kits and the kit packages in `dependencies` differ, and tries each number's bounds with every kit.
 
-To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`. `MAKERSMCP_KIT_PATHS=<kit>=<folder> npm test` tries its bounds too.
+To try changes to a kit that are not on npm yet, start makersmcp with `--kit-path <kit>=<folder>`, which runs that checkout instead of the package. `MAKERSMCP_KIT_PATHS=<kit>=<folder> npm test` tries the checkout's bounds instead of the package's.

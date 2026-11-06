@@ -6,7 +6,7 @@ Open source kits for people who make things, from creators to product teams: ima
 
 ## The kits
 
-Each kit lives in its own repository and works on its own too, as a CLI and an agent skill.
+Each kit lives in its own repository and works on its own too, as a CLI and an agent skill. makersmcp comes with all of them, so no kit needs installing on its own.
 
 | Field | Kit | Tools |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Each kit lives in its own repository and works on its own too, as a CLI and an a
 | Design | [easyfontkit](https://github.com/EminBudak/easyfontkit): a site's fonts with their licenses and free look-alikes | `make_font_kit` |
 | Image | [easyscreenshotkit](https://github.com/EminBudak/easyscreenshotkit): clean screenshots and a short demo video of a website | `take_screenshots`, `record_demo_video`, `check_pwa_screenshots` |
 | Video | [launch-film](https://github.com/EminBudak/launch-film): a launch film with music, the launch pictures, and a check for any video | `make_launch_film`, `plan_launch_film`, `render_launch_film`, `make_launch_stills`, `check_video`, `launch_film_guide` |
-| Sound | musicfit (soon): a music track cut to fit your video | `fit_music`, `analyze_music` |
+| Sound | [musicfit](https://github.com/EminBudak/musicfit): a music track cut to fit your video | `fit_music`, `analyze_music` |
 
 More kits are on the way.
 
@@ -22,7 +22,7 @@ More kits are on the way.
 
 The first release on npm is on its way, so until it is out the `npx` setups below will not find the package; [run it from source](#run-it-from-source) works today. Star the repo to hear when it ships.
 
-You need Node 22 or newer and the Chrome, Chromium, Edge or Brave you already have. The video and sound kits also need ffmpeg. Every setup runs `npx -y makersmcp@0.1.0`: keep the version in it, since `npx` can otherwise go on using an older copy it cached.
+You need Node 22 or newer and the Chrome, Chromium, Edge or Brave you already have. Demo videos, launch films and music also need ffmpeg. Every setup runs `npx -y makersmcp@0.1.0`: keep the version in it, since `npx` can otherwise go on using an older copy it cached.
 
 Then ask your agent for what you need, like "make a launch film for linear.app" or "get the brand kit and the fonts of stripe.com".
 
@@ -152,6 +152,7 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 ## When something fails
 
 - The tools don't appear: check that `node --version` says 22 or newer, then restart the client. `npx -y makersmcp@0.1.0 --check` lists what makersmcp found.
+- A kit's tools are missing: `--check` says why. Every kit comes with makersmcp, so look at `--kits` and `--kit-path`, and from source run `npm install` again after a pull.
 - A kit can't find Chrome or ffmpeg: set `CHROME_PATH` and `FFMPEG_PATH` in the server's `env`. launch-film reads `LAUNCH_FILM_CHROME` and `LAUNCH_FILM_FFMPEG`.
 - A long job meets the client's time limit: no call waits longer than `wait_seconds`, 45 by default. A job still running then comes back with a `job_id` and `next_action: wait_for_job`, and the agent should call that, never the first tool again, which would start a second job. Where a client lets you set a tool timeout, keep it above 45 seconds.
 
@@ -161,7 +162,7 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 | --- | --- | --- |
 | `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`; leave it out or give `all` for every kit |
 | `--out <dir>` | `MAKERSMCP_OUT` | where the folders go, made with the first job; `~` is your home folder |
-| `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package; `~` is your home folder |
+| `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | runs a kit's checkout instead of the package that comes with makersmcp; `~` is your home folder |
 | `--check` | | prints the kits, Chrome, ffmpeg and the folder, and exits |
 
 ## Use it in your own server
@@ -176,7 +177,7 @@ await serveStdio({ kits: ['easybrandkit', 'launch-film'], outDir: '/srv/makersmc
 
 ## Add a kit
 
-makersmcp has no code for any kit. Each kit is a JSON file in [kits/](kits) that names its npm package, its tools, and how each tool's parameters become the kit's arguments. A new kit is a new file there and its package in `package.json`; removing a kit is the reverse. [docs/kits.md](docs/kits.md) describes the file.
+makersmcp has no code for any kit. Each kit is a JSON file in [kits/](kits) that names its npm package, its tools, and how each tool's parameters become the kit's arguments. A new kit is a new file there and its package in the `dependencies` of `package.json`, which is how it comes with makersmcp; removing a kit is the reverse, and `npm test` fails while the two do not match. [docs/kits.md](docs/kits.md) describes the file.
 
 ## Develop
 
@@ -185,6 +186,6 @@ npm install
 npm test
 ```
 
-To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`. `npm test` tries the bounds of every number in kits/ with each kit that is installed; `MAKERSMCP_KIT_PATHS=musicfit=../musicfit npm test` tries a checkout's too.
+To try changes to a kit that are not on npm yet, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`, and it runs that checkout instead of the package. `npm test` tries the bounds of every number in kits/ with each kit's package; `MAKERSMCP_KIT_PATHS=musicfit=../musicfit npm test` tries the checkout's instead.
 
 [MIT](LICENSE)

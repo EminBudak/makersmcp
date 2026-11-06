@@ -6,7 +6,7 @@ import { describeSetup, serveStdio, version, type MakersMcpOptions } from './ser
 const HELP = `Usage: makersmcp [options]
 
 Runs the MakersMCP server on stdio, for an MCP client like Claude, Cursor,
-VS Code or Codex. Every kit that is installed is turned on.
+VS Code or Codex. Every kit comes with makersmcp and is turned on.
 
 Options:
   --kits <list>        turn on only these kits, like easybrandkit,launch-film

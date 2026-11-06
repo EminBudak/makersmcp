@@ -290,7 +290,7 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
 /**
  * Finds a kit's package: the path given for it in kitPaths when there is one
  * (a checkout, for development; a leading ~ is the home folder), else the package
- * installed next to makersmcp.
+ * installed next to makersmcp, which has every kit in kits/ in its dependencies.
  */
 export function resolveKit(
   definition: KitDefinition,
