@@ -5,7 +5,7 @@
 // MAKERSMCP_KIT_PATHS=easyscreenshot=../easyscreenshot,musicfit=../musicfit npm test.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -33,6 +33,14 @@ test('every number has its bounds', () => {
           assert.ok(param.min !== undefined && param.max !== undefined, `${tool.name}.${name} needs min and max`);
         }
       }
+    }
+  }
+});
+
+test('a tool that replaces folders in its own says it is destructive', () => {
+  for (const kit of kits) {
+    for (const tool of kit.tools) {
+      if (tool.out?.replaces) assert.equal(tool.destructive, true, tool.name);
     }
   }
 });
@@ -152,6 +160,53 @@ async function withLaunchFilm(callback) {
 
 const launchFilm = resolveKit(kits.find(kit => kit.kit === 'launch-film'));
 const noLaunchFilm = launchFilm.script ? false : 'launch-film is not installed';
+
+test('plan_launch_film never deletes a brand folder of the user\'s, and the tools say they may replace one', { skip: noLaunchFilm }, async () => {
+  await withLaunchFilm(async (client, outDir) => {
+    const write = (file, body) => {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), body);
+    };
+    // A brand kit made elsewhere, the page's words so nothing is fetched, and the team's own brand/ folder.
+    write('easybrandkit-acme.com/brand.json', JSON.stringify({
+      version: 1, name: 'Acme', url: 'https://acme.com',
+      colors: [{ hex: '#112233', role: 'primary' }, { hex: '#ffcc00', role: 'button' }],
+    }));
+    write('words.json', JSON.stringify({
+      title: 'Acme widgets', description: 'Acme makes widgets for teams.',
+      headings: [{ level: 1, text: 'Widgets for every team' }, { level: 2, text: 'Fast setup' }, { level: 2, text: 'Clear pricing' }],
+      ctas: [], paragraphs: [], jsonld: [],
+    }));
+    write('project/brand/team-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    write('project/brand/guidelines.md', '# Team guidelines\n');
+    const plan = out_dir => client.callTool({
+      name: 'plan_launch_film',
+      arguments: { url: 'https://acme.com', brand: 'easybrandkit-acme.com', words: 'words.json', out_dir, wait_seconds: 60 },
+    });
+
+    const refused = await plan('project');
+    assert.equal(refused.isError, true);
+    assert.match(text(refused), /not started[\s\S]*already holds other files[\s\S]*Give another out_dir/);
+    assert.deepEqual(readdirSync(path.join(outDir, 'project', 'brand')).sort(), ['guidelines.md', 'team-logo.svg']);
+
+    const fresh = await plan('fresh');
+    assert.equal(fresh.structuredContent.status, 'done', text(fresh));
+    assert.ok(existsSync(path.join(outDir, 'fresh', 'film.json')));
+    assert.deepEqual(fresh.structuredContent.files.map(file => file.path).sort(), [path.join('brand', 'brand.json'), 'film.json', 'words.json']);
+
+    // A brand/ an earlier run made is the kit's to replace.
+    const again = await plan('fresh');
+    assert.equal(again.structuredContent.status, 'done', text(again));
+
+    const { tools } = await client.listTools();
+    for (const name of ['make_launch_film', 'plan_launch_film', 'make_launch_stills']) {
+      const entry = tools.find(item => item.name === name);
+      assert.equal(entry.annotations.destructiveHint, true, name);
+      assert.match(entry.inputSchema.properties.out_dir.description, /replaces the brand\/ folder in it with its own/);
+    }
+    assert.equal(tools.find(item => item.name === 'check_video').annotations.destructiveHint, false);
+  });
+});
 
 test('check_video on a file that is not a video is an error, not a failed check, and shows no old report', { skip: noLaunchFilm }, async () => {
   await withLaunchFilm(async (client, outDir) => {

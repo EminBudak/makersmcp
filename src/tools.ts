@@ -102,13 +102,23 @@ function waitFor(context: ToolContext, id: string, seconds: number, extra: Extra
   return context.backend.wait(id, seconds, { signal: extra.signal, onLine });
 }
 
+function outDirHelp(tool: ToolDefinition, baseDir: string | undefined): string {
+  const out = tool.out!;
+  let help = `Folder to save into, absolute or relative to ${baseDir}. Default: ${out.name}.`;
+  if (out.replaces) {
+    const names = Object.keys(out.replaces).map(name => `${name}/`);
+    const folders = names.length > 1 ? `the ${names.join(' and ')} folders` : `the ${names[0]} folder`;
+    help += ` The kit replaces ${folders} in it with its own, so it does not start while one holds other files.`;
+  }
+  return help;
+}
+
 export function registerKitTool(server: McpServer, context: ToolContext, kit: AvailableKit, tool: ToolDefinition): void {
   const { backend } = context;
   const inputSchema: Record<string, z.ZodType> = {};
   for (const [name, param] of Object.entries(tool.params)) inputSchema[name] = paramSchema(param, backend.where);
   if (tool.out?.flag && backend.where === 'local') {
-    inputSchema['out_dir'] = z.string().min(1).optional()
-      .describe(`Folder to save into, absolute or relative to ${context.baseDir}. Default: ${tool.out.name}.`);
+    inputSchema['out_dir'] = z.string().min(1).optional().describe(outDirHelp(tool, context.baseDir));
   }
   inputSchema['wait_seconds'] = waitSeconds;
   const place = backend.place ?? (backend.where === 'local' ? 'on this machine' : 'on a server');
@@ -123,7 +133,7 @@ export function registerKitTool(server: McpServer, context: ToolContext, kit: Av
       annotations: {
         title: tool.title,
         readOnlyHint: tool.readOnly === true,
-        destructiveHint: false,
+        destructiveHint: tool.destructive === true,
         idempotentHint: tool.readOnly === true,
         openWorldHint: backend.where === 'hosted'
           || Object.values(tool.params).some(param => param.type === 'url' || param.type === 'url_or_path'),

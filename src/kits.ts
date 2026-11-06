@@ -49,6 +49,12 @@ export interface OutDefinition {
   name: string;
   /** Used without the flag when `name` cannot be filled, like {host} for a file. */
   otherwise?: string;
+  /**
+   * Folders in the folder given with `flag` that the kit deletes and makes again, each
+   * with the file that marks one a kit made, like { "brand": "brand.json" }. makersmcp
+   * does not start the kit when such a folder holds anything else.
+   */
+  replaces?: Record<string, string>;
 }
 
 export interface ToolDefinition {
@@ -69,6 +75,8 @@ export interface ToolDefinition {
    */
   report?: string;
   readOnly?: boolean;
+  /** The tool may delete or replace files that are already in its folder, so a client may ask first. */
+  destructive?: boolean;
   /** Flags that take another kit's script, like { "--easybrandkit": "easybrandkit" }. */
   uses?: Record<string, string>;
 }
@@ -164,6 +172,10 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
       if (tool.report !== 'stdout' && (!tool.out || !staysInside(tool.report))) {
         fail(`${tool.name}: report is "stdout" or a file in the tool's folder`);
       }
+    }
+    for (const [folder, marker] of Object.entries(tool.out?.replaces ?? {})) {
+      if (!tool.out?.flag) fail(`${tool.name}: replaces needs out.flag`);
+      if (!staysInside(folder) || !staysInside(marker)) fail(`${tool.name}: replaces names folders and files inside the tool's folder`);
     }
   }
 }

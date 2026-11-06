@@ -424,3 +424,39 @@ test('a confined backend reads no file and writes no folder outside its own', ()
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a tool never replaces a folder that holds files no kit made', () => {
+  const plan = tool('plan_launch_film');
+  const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  try {
+    const write = (file, body = 'x') => {
+      mkdirSync(path.dirname(path.join(baseDir, file)), { recursive: true });
+      writeFileSync(path.join(baseDir, file), body);
+    };
+    write('kit/brand.json', '{}');
+    write('project/brand/team-logo.svg');
+    write('earlier/brand/brand.json', '{}');
+    write('earlier/brand/logo-01.png');
+    write('site/brand/acme/brand.json', '{}');
+    mkdirSync(path.join(baseDir, 'empty', 'brand'), { recursive: true });
+    const context = { baseDir, installed: new Map() };
+    const call = input => buildCommand(plan, { url: 'https://acme.com', ...input }, context);
+
+    assert.throws(() => call({ brand: 'kit', out_dir: 'project' }), /plan_launch_film replaces the brand folder in .*project with its own, deleting what is there, and .*brand already holds other files \(no brand\.json in it\)/);
+    assert.throws(() => call({ out_dir: 'project' }), /no brand\.json in it/);
+    // The kit to use is inside the folder it would delete.
+    assert.throws(() => call({ brand: 'site/brand/acme', out_dir: 'site' }), /and .*acme is inside it/);
+    // An earlier kit, an empty folder, the folder itself as the kit, or no folder at all: fine.
+    for (const input of [
+      { brand: 'kit', out_dir: 'earlier' },
+      { brand: 'kit', out_dir: 'empty' },
+      { brand: 'project/brand', out_dir: 'project' },
+      { brand: 'kit', out_dir: 'new' },
+      { brand: 'kit' },
+    ]) {
+      assert.ok(call(input).args.includes('--out'), JSON.stringify(input));
+    }
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
+  }
+});

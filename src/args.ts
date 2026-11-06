@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { InstalledKit, ParamDefinition, ToolDefinition } from './kits.js';
@@ -94,6 +94,8 @@ export function buildCommand(
   };
 
   const values: Record<string, unknown> = {};
+  // The files and folders the call names, as the kit gets them.
+  const files: string[] = [];
   for (const [name, param] of Object.entries(tool.params)) {
     let value = input[name];
     if (value === undefined || value === null || value === '') continue;
@@ -107,6 +109,7 @@ export function buildCommand(
         }
         value = resolve(name, text);
         if (!existsSync(value as string)) throw new ArgumentError(nothingAt(name, param, value as string, text));
+        files.push(value as string);
       }
     }
     values[name] = value;
@@ -138,7 +141,10 @@ export function buildCommand(
     const named = fill(tool.out.name, tool, values);
     if (given !== undefined || named !== undefined) {
       folder = given !== undefined ? resolve('out_dir', given) : path.resolve(baseDir, named!);
-      if (tool.out.flag) args.push(tool.out.flag, folder);
+      if (tool.out.flag) {
+        refuseReplacing(tool, folder, files);
+        args.push(tool.out.flag, folder);
+      }
     } else if (tool.out.otherwise) {
       const other = fill(tool.out.otherwise, tool, values);
       if (other !== undefined) folder = path.resolve(baseDir, other);
@@ -158,6 +164,34 @@ function nothingAt(name: string, param: ParamDefinition, full: string, text: str
     return `${name}: there is nothing at ${full}, and "${text}" is not text the kit takes. ${param.description}`;
   }
   return `${name}: there is nothing at ${full}`;
+}
+
+/**
+ * Refuses a call that would have the kit delete a folder in `folder` it replaces with
+ * its own (out.replaces) while that folder holds files no kit made there, or a file the
+ * call itself names. A folder the call names is used where it is, so it stays.
+ */
+function refuseReplacing(tool: ToolDefinition, folder: string, files: string[]): void {
+  for (const [name, marker] of Object.entries(tool.out?.replaces ?? {})) {
+    const dir = path.join(folder, name);
+    if (!existsSync(dir)) continue;
+    try {
+      if (statSync(dir).isDirectory() && readdirSync(dir).length === 0) continue;
+    } catch {
+      // Not readable: count it as full.
+    }
+    if (files.some(file => file === dir || file === path.join(dir, marker))) continue;
+    const inside = files.find(file => isInside(dir, file));
+    const why = inside
+      ? `${inside} is inside it`
+      : !existsSync(path.join(dir, marker)) ? `${dir} already holds other files (no ${marker} in it)` : undefined;
+    if (why) {
+      throw new ArgumentError(
+        `${tool.name} replaces the ${name} folder in ${folder} with its own, deleting what is there, and ${why}. `
+        + `Give another out_dir, or move those files first.`,
+      );
+    }
+  }
 }
 
 /** Fills {host}, {dir:param}, {stem:param} and {param}, or gives undefined. */
