@@ -16,7 +16,7 @@
         "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
         "facts": { "type": "boolean", "flag": "--facts", "description": "Also read what the site claims about itself from its home, pricing, customers, security, integrations and about pages. Takes longer." },
         "stores": { "type": "boolean", "flag": "--no-stores", "when": false, "description": "Set to false to skip app store listings and social profiles." },
-        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 900, "description": "Give up after this many seconds (default 120, or 240 with facts)." }
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 30, "max": 600, "description": "Give up after this many seconds (default 120, or 240 with facts)." }
       },
       "docs": ["BRAND.md", "FACTS.md"]
     }

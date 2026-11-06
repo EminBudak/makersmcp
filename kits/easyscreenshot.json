@@ -23,7 +23,7 @@
         "reduced_motion": { "type": "boolean", "flag": "--reduced-motion", "description": "Ask the site for its reduced-motion version." },
         "clean": { "type": "boolean", "flag": "--no-clean", "when": false, "description": "Set to false to take the pages as they come, banners and bubbles included." },
         "pwa": { "type": "boolean", "flag": "--pwa", "description": "Also save screenshots for a web app manifest in pwa/: each page's first screen at 1920x1080 and on a phone at 1080x1920, checked against Chrome's rules for its richer install dialog, with the manifest entries in pwa/manifest-screenshots.json." },
-        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 1800, "description": "Give up after this many seconds (default 300)." }
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 30, "max": 900, "description": "Give up after this many seconds (default 300)." }
       },
       "docs": ["SCREENSHOTS.md"]
     },
@@ -48,7 +48,7 @@
         "reduced_motion": { "type": "boolean", "flag": "--reduced-motion", "description": "Ask the site for its reduced-motion version." },
         "clean": { "type": "boolean", "flag": "--no-clean", "when": false, "description": "Set to false to keep the banners and bubbles." },
         "gif": { "type": "boolean", "flag": "--no-gif", "when": false, "description": "Set to false to skip demo.gif." },
-        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 1800, "description": "Give up after this many seconds (default 900)." }
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 60, "max": 1800, "description": "Give up after this many seconds (default 900)." }
       }
     },
     {

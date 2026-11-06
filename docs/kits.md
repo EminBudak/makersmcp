@@ -41,7 +41,7 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
 - `args`: the kit's positional arguments, like `["demo", "{url}"]`. `{param}` is that parameter's value.
 - `params`: each one has a `type`, a `description`, and a place in `args` or a `flag`. A parameter in `args` must be `required`.
   - `url` is an http or https address. `path` is a file or folder; a relative one is read from the output folder, and it must exist. `url_or_path` is either.
-  - `string`, `integer` and `number`; `min` and `max` bound the numbers.
+  - `string`, `integer` and `number`; `min` and `max` bound the numbers. Every number needs both, set to what the kit itself accepts: `npm test` tries each bound with the kit.
   - `boolean` passes its flag when it is true, or with `"when": false` when it is false, for flags like `--no-music`.
   - `enum` takes one of its `values`. `list` takes several, joined with commas into one flag. `repeat` passes the flag once for each item.
 - `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported. `otherwise` is used without the flag when `name` cannot be filled, like `{host}` when the tool was given a file.
@@ -59,6 +59,7 @@ Each kit runs in a process group of its own, with the browser and ffmpeg it star
 
 1. Write its file in `kits/`.
 2. Add its package to `dependencies` in `package.json`.
-3. Run `npm test`, which checks every file in `kits/`.
+3. In `tests/kits.test.mjs`, say how the kit reads its arguments without a browser (its dry run) and one value it refuses.
+4. Run `npm test`, which checks every file in `kits/` and tries each number's bounds with every kit that is installed.
 
-To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`.
+To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`. `MAKERSMCP_KIT_PATHS=<kit>=<folder> npm test` tries its bounds too.

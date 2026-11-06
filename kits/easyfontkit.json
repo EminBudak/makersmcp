@@ -15,7 +15,7 @@
       "params": {
         "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
         "files": { "type": "boolean", "flag": "--no-files", "when": false, "description": "Set to false to read the font files without saving them." },
-        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 10, "max": 900, "description": "Give up after this many seconds (default 120)." }
+        "timeout_seconds": { "type": "integer", "flag": "--timeout", "min": 30, "max": 600, "description": "Give up after this many seconds (default 120)." }
       },
       "docs": ["FONTS.md"]
     }

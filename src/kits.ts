@@ -131,6 +131,10 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
       if (!PARAM_TYPES.has(param.type)) fail(`${tool.name}.${name}: unknown type "${param.type}"`);
       if (param.type === 'enum' && !param.values?.length) fail(`${tool.name}.${name}: an enum needs values`);
       if (param.flag !== undefined && !/^--?[a-z]/.test(param.flag)) fail(`${tool.name}.${name}: bad flag "${param.flag}"`);
+      if ((param.min !== undefined || param.max !== undefined) && param.type !== 'integer' && param.type !== 'number') {
+        fail(`${tool.name}.${name}: only numbers take min and max`);
+      }
+      if (param.min !== undefined && param.max !== undefined && param.min > param.max) fail(`${tool.name}.${name}: min is above max`);
       const used = tool.args.some(arg => arg === `{${name}}`);
       if (!param.flag && !used) fail(`${tool.name}.${name}: needs a flag or a place in args`);
       if (used && !param.required) fail(`${tool.name}.${name}: a positional parameter must be required`);

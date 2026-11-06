@@ -183,6 +183,6 @@ npm install
 npm test
 ```
 
-To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`.
+To try a kit from its checkout before it is on npm, start makersmcp with `--kit-path <kit>=<folder>`, like `--kit-path musicfit=../musicfit`. `npm test` tries the bounds of every number in kits/ with each kit that is installed; `MAKERSMCP_KIT_PATHS=musicfit=../musicfit npm test` tries a checkout's too.
 
 [MIT](LICENSE)

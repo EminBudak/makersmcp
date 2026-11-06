@@ -17,13 +17,13 @@
         "length": { "type": "string", "flag": "--length", "required": true, "description": "How long the result is: seconds like 32 or 32s, frames like 960f, or 1:05." },
         "hit": { "type": "string", "flag": "--hit", "description": "Where the drop lands in the result, in seconds or frames like 825f." },
         "drop": { "type": "string", "flag": "--drop", "description": "Where the drop is in the track (default: found)." },
-        "fps": { "type": "number", "flag": "--fps", "description": "Frame rate for frame numbers, like 30, 25 or 29.97 (default 30)." },
+        "fps": { "type": "number", "flag": "--fps", "min": 1, "max": 240, "description": "Frame rate for frame numbers, like 30, 25 or 29.97 (default 30)." },
         "voice": { "type": "path", "flag": "--voice", "description": "A voice track on the video's timeline; the music dips under it." },
-        "duck": { "type": "number", "flag": "--duck", "description": "How far the music dips under the voice, in dB (default 10)." },
-        "lufs": { "type": "number", "flag": "--lufs", "description": "Loudness target in LUFS (default -14)." },
+        "duck": { "type": "number", "flag": "--duck", "min": 0, "max": 40, "description": "How far the music dips under the voice, in dB (default 10)." },
+        "lufs": { "type": "number", "flag": "--lufs", "min": -40, "max": -5, "description": "Loudness target in LUFS (default -14)." },
         "end": { "type": "enum", "flag": "--end", "values": ["auto", "natural", "fade"], "description": "How it ends: auto, natural (the track's own ending) or fade (default auto)." },
-        "fade": { "type": "number", "flag": "--fade", "description": "Length of the closing fade, in whole beats (default a bar)." },
-        "bpm": { "type": "number", "flag": "--bpm", "description": "The tempo, when the one found is half or double the real one." },
+        "fade": { "type": "number", "flag": "--fade", "min": 0.1, "max": 30, "description": "Length of the closing fade, in whole beats (default a bar)." },
+        "bpm": { "type": "number", "flag": "--bpm", "min": 40, "max": 250, "description": "The tempo, when the one found is half or double the real one." },
         "meter": { "type": "enum", "flag": "--meter", "values": ["3", "4"], "description": "Beats to a bar (default: found)." }
       },
       "docs": ["FIT.md"]
@@ -36,7 +36,7 @@
       "out": { "flag": "--out", "name": "musicfit-{stem:track}" },
       "params": {
         "track": { "type": "path", "required": true, "description": "The music file, or a video whose sound to read." },
-        "bpm": { "type": "number", "flag": "--bpm", "description": "The tempo, when the one found is half or double the real one." },
+        "bpm": { "type": "number", "flag": "--bpm", "min": 40, "max": 250, "description": "The tempo, when the one found is half or double the real one." },
         "meter": { "type": "enum", "flag": "--meter", "values": ["3", "4"], "description": "Beats to a bar (default: found)." }
       },
       "docs": ["FIT.md"]
