@@ -12,7 +12,7 @@ Each kit lives in its own repository and works on its own too, as a CLI and an a
 | --- | --- | --- |
 | Design | [easybrandkit](https://github.com/EminBudak/easybrandkit): a website's logo files, colors, fonts and first screen | `make_brand_kit` |
 | Design | [easyfontkit](https://github.com/EminBudak/easyfontkit): a site's fonts with their licenses and free look-alikes | `make_font_kit` |
-| Image | [easyscreenshot](https://github.com/EminBudak/easyscreenshot): clean screenshots and a short demo video of a website | `take_screenshots`, `record_demo_video`, `check_pwa_screenshots` |
+| Image | [easyscreenshotkit](https://github.com/EminBudak/easyscreenshotkit): clean screenshots and a short demo video of a website | `take_screenshots`, `record_demo_video`, `check_pwa_screenshots` |
 | Video | [launch-film](https://github.com/EminBudak/launch-film): a launch film with music, the launch pictures, and a check for any video | `make_launch_film`, `plan_launch_film`, `render_launch_film`, `make_launch_stills`, `check_video`, `launch_film_guide` |
 | Sound | musicfit (soon): a music track cut to fit your video | `fit_music`, `analyze_music` |
 

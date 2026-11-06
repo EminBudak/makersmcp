@@ -2,7 +2,7 @@
 // are tried with each installed kit's own parser, so a schema never offers a value the
 // kit refuses. easybrandkit and launch-film are dependencies; the other kits run when
 // MAKERSMCP_KIT_PATHS names their checkouts, the way the CLI takes it, like
-// MAKERSMCP_KIT_PATHS=easyscreenshot=../easyscreenshot,musicfit=../musicfit npm test.
+// MAKERSMCP_KIT_PATHS=easyscreenshotkit=../easyscreenshotkit,musicfit=../musicfit npm test.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -63,7 +63,7 @@ function dryRun(kit, tool, extra, folder) {
   switch (kit.kit) {
     case 'easybrandkit':
     case 'easyfontkit':
-    case 'easyscreenshot':
+    case 'easyscreenshotkit':
       // These check every value before they look at --help.
       return { args: [...positional, ...extra, '--help'], ran: run => run.status === 0 };
     case 'musicfit':
@@ -89,7 +89,7 @@ function dryRun(kit, tool, extra, folder) {
 const REFUSED = {
   easybrandkit: ['make_brand_kit', ['--timeout', '601']],
   easyfontkit: ['make_font_kit', ['--timeout', '29']],
-  easyscreenshot: ['take_screenshots', ['--timeout', '901']],
+  easyscreenshotkit: ['take_screenshots', ['--timeout', '901']],
   musicfit: ['fit_music', ['--lufs', '-4']],
   'launch-film': ['check_video', ['--lufs', '0']],
 };

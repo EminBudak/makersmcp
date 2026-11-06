@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "makersmcp",
-      "description": "One MCP server for the MakersMCP kits: easybrandkit, easyfontkit, easyscreenshot, launch-film and musicfit. Each tool saves its files in a folder and tells your agent what is in it.",
+      "description": "One MCP server for the MakersMCP kits: easybrandkit, easyfontkit, easyscreenshotkit, launch-film and musicfit. Each tool saves its files in a folder and tells your agent what is in it.",
       "version": "0.1.0",
       "source": "./",
       "author": {

@@ -1,9 +1,9 @@
 {
-  "kit": "easyscreenshot",
-  "package": "easyscreenshot",
+  "kit": "easyscreenshotkit",
+  "package": "easyscreenshotkit",
   "field": "image",
   "about": "Clean screenshots of a website, a demo video of it, and screenshots for its web app manifest.",
-  "repository": "https://github.com/EminBudak/easyscreenshot",
+  "repository": "https://github.com/EminBudak/easyscreenshotkit",
   "needs": ["chrome", "ffmpeg"],
   "tools": [
     {
@@ -11,7 +11,7 @@
       "title": "Screenshots of a website",
       "description": "Opens a website in a headless browser, picks the pages worth showing (home, pricing, features and the like), hides cookie banners, chat bubbles and other floating boxes, and saves desktop, phone and whole-page screenshots in one folder. SCREENSHOTS.md is for people and agents, manifest.json for tools, sheet.png shows every page on one picture. Sizes: desktop is 1600x900 at 2x, mobile 360x640 at 3x, iphone 440x956 at 3x, full the whole page at 1x, mobile-full the whole phone page at 2x, or any WxH with an optional @scale (1270x760@2 is a Product Hunt gallery image).",
       "args": ["{url}"],
-      "out": { "flag": "--out", "name": "easyscreenshot-{host}" },
+      "out": { "flag": "--out", "name": "easyscreenshotkit-{host}" },
       "params": {
         "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
         "pages": { "type": "integer", "flag": "--pages", "min": 1, "max": 12, "description": "How many pages, the home page included (default 5)." },
@@ -32,7 +32,7 @@
       "title": "Demo video of a website",
       "description": "Records a short demo video of a website: a tour of the pages worth showing, or the steps in a file. The page plays in a browser window on a backdrop, with a visible pointer, smooth scrolling and a zoom on each click. Cookie banners and chat bubbles are hidden, never clicked. Saves demo.mp4 (1920x1080, H.264), demo.gif, poster.png and steps.json, which says where every step starts and ends, in seconds and in frames.",
       "args": ["demo", "{url}"],
-      "out": { "flag": "--out", "name": "easyscreenshot-demo-{host}" },
+      "out": { "flag": "--out", "name": "easyscreenshotkit-demo-{host}" },
       "params": {
         "url": { "type": "url", "required": true, "description": "The website, like https://linear.app" },
         "steps": { "type": "path", "flag": "--steps", "description": "A YAML or JSON file of steps to follow instead of a tour: visit, scroll, click, type, wait, hover, key." },
