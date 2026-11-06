@@ -709,6 +709,35 @@ test('for any other address a tool lets easybrandkit make brand/ again where it 
   });
 });
 
+test('make_launch_stills takes a value that ends in .json for a film.json, so a link to one is refused and another file is an address', () => {
+  const stills = tool('make_launch_stills');
+  const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  try {
+    for (const file of ['film.json', 'FILM.JSON', 'film.txt']) writeFileSync(path.join(baseDir, file), '{}');
+    const context = { baseDir, installed: new Map() };
+    const call = source => buildCommand(stills, { source }, context);
+    for (const source of ['https://example.com/film.json', 'https://example.com/plans/FILM.JSON', 'http://example.com/a.Json']) {
+      assert.throws(() => call(source), new RegExp(`: source: the kit takes ${source.replace(/[.?/]/g, '\\$&')} for a file, not for an address, and cannot download one\\. The product's website`), source);
+    }
+    // A link with a query after .json is read as the website, the way the kit reads it.
+    assert.deepEqual(call('https://example.com/film.json?sig=1').args.slice(0, 2), ['stills', 'https://example.com/film.json?sig=1']);
+    for (const source of ['film.json', 'FILM.JSON']) assert.deepEqual(call(source).args, ['stills', path.join(baseDir, source)]);
+    assert.throws(() => call('film.txt'), /: source: the kit takes .*film\.txt for an address, not for a file\./);
+    assert.throws(() => call('nope.json'), /source: there is nothing at .*nope\.json/);
+
+    const broken = change => {
+      const definition = structuredClone(loadKitDefinitions().find(kit => kit.kit === 'launch-film'));
+      change(definition.tools.find(entry => entry.name === 'make_launch_stills').params);
+      return () => validateKitDefinition(definition);
+    };
+    assert.throws(broken(params => { params.source.filePattern = '(.json'; }), /the filePattern is not a regular expression/);
+    assert.throws(broken(params => { params.for.filePattern = '.*'; }), /only url_or_path takes a filePattern/);
+    broken(() => {})();
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
 test('a folder a tool replaces is described well enough to tell a kit\'s from the user\'s', () => {
   const launchFilm = loadKitDefinitions().find(kit => kit.kit === 'launch-film');
   const broken = change => {

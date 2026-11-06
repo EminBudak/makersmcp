@@ -44,6 +44,13 @@ export interface ParamDefinition {
    * seconds. A value it does not match in full is a file.
    */
   pattern?: string;
+  /**
+   * For url_or_path, when the kit tells a file from an address by the value itself: a
+   * regular expression for the values it takes for a file, matched in full, like any
+   * value that ends in .json. A link it matches is refused, since the kit would look for
+   * it on disk, and so is a file it does not match, since the kit would read it as an address.
+   */
+  filePattern?: string;
   min?: number;
   max?: number;
 }
@@ -218,6 +225,10 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
         if (!isPattern(param.pattern)) fail(`${tool.name}.${name}: the pattern is not a regular expression`);
       } else if (param.pattern !== undefined) {
         fail(`${tool.name}.${name}: only text_or_path takes a pattern`);
+      }
+      if (param.filePattern !== undefined) {
+        if (param.type !== 'url_or_path') fail(`${tool.name}.${name}: only url_or_path takes a filePattern`);
+        if (!isPattern(param.filePattern)) fail(`${tool.name}.${name}: the filePattern is not a regular expression`);
       }
       if ((param.min !== undefined || param.max !== undefined) && param.type !== 'integer' && param.type !== 'number') {
         fail(`${tool.name}.${name}: only numbers take min and max`);

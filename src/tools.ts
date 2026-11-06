@@ -28,6 +28,17 @@ const HOSTED_FILE_SOURCE = '(https?:\\/\\/\\S+|job:[^\\s/]+\\/\\S+)';
 const HOSTED_FILE = new RegExp(`^${HOSTED_FILE_SOURCE}$`, 'i');
 const HOSTED_FILE_HELP = ' Give an https link to the file, or job:<job_id>/<path> for a file an earlier job saved.';
 const HOSTED_TEXT_OR_FILE_HELP = ' For a file, give an https link to it, or job:<job_id>/<path> for a file an earlier job saved.';
+const HOSTED_ADDRESS_OR_FILE_HELP = ' A link is read as the address, so give a file as job:<job_id>/<path>, for one an earlier job saved.';
+
+/**
+ * Hosted, a url_or_path whose kit tells a file by the value itself: a link it does not
+ * take for a file, or job:<job_id>/<path> for a file it does, since the kit cannot
+ * download one.
+ */
+function hostedAddressOrFile(filePattern: string): RegExp {
+  const file = `(?:${filePattern})$`;
+  return new RegExp(`^(?:(?!${file})https?:\\/\\/\\S+|(?=${file})job:[^\\s/]+\\/\\S+)$`, 'i');
+}
 
 function paramSchema(param: ParamDefinition, where: KitBackend['where']): z.ZodType {
   const hosted = where === 'hosted';
@@ -43,7 +54,13 @@ function paramSchema(param: ParamDefinition, where: KitBackend['where']): z.ZodT
       break;
     case 'path':
     case 'url_or_path':
-      if (hosted) {
+      if (hosted && param.type === 'url_or_path' && param.filePattern !== undefined) {
+        schema = z.string().regex(
+          hostedAddressOrFile(param.filePattern),
+          'an https address, or job:<job_id>/<path> for a file an earlier job saved',
+        );
+        linkHelp(HOSTED_ADDRESS_OR_FILE_HELP);
+      } else if (hosted) {
         schema = z.string().regex(HOSTED_FILE, 'an https link, or job:<job_id>/<path>');
         linkHelp(HOSTED_FILE_HELP);
       } else {

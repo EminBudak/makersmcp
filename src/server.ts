@@ -107,7 +107,7 @@ function instructions(context: ToolContext): string {
       + 'demo videos, launch films and more, each from a website or a file. A file an earlier job saved '
       + 'goes in as job:<job_id>/<path>, so the files it names come with it: give a film.json or a brand '
       + 'kit that way. Other files go as https links where a parameter takes one, and a parameter that '
-      + 'takes an address or a file reads any link as the address. Every tool returns links to the '
+      + 'takes an address or a file reads a link only as the address. Every tool returns links to the '
       + 'files it made, which work for a few days, and the kit\'s own notes. A tool that is still working '
       + 'after wait_seconds returns a job_id: call wait_for_job with it, never the same tool again.';
   }

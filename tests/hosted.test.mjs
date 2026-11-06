@@ -226,7 +226,7 @@ test('hosted, the tool descriptions speak of the server, not of the agent\'s mac
     assert.match(byName.plan_launch_film.description, /A film\.json cannot be changed here yet/);
     const source = byName.make_launch_stills.inputSchema.properties.source.description;
     assert.match(source, /job:<job_id>\/film\.json/);
-    assert.match(source, /A link is always read as a website\./);
+    assert.match(source, /A link is read as the website, and one that ends in \.json is refused\./);
     assert.doesNotMatch(source, /Give an https link to the file/);
     // A manifest link works, since the kit fetches it.
     assert.match(byName.check_pwa_screenshots.inputSchema.properties.manifest.description, /Give an https link to the file/);
@@ -239,7 +239,39 @@ test('hosted, the instructions do not promise that any file can be a link', asyn
     assert.doesNotMatch(instructions, /Give files as https links/);
     // A film.json from a link would come alone, and make_launch_stills reads a link as the website.
     assert.match(instructions, /A file an earlier job saved goes in as job:<job_id>\/<path>, so the files it names come with it: give a film\.json or a brand kit that way\./);
-    assert.match(instructions, /a parameter that takes an address or a file reads any link as the address\./);
+    assert.match(instructions, /a parameter that takes an address or a file reads a link only as the address\./);
     assert.doesNotMatch(instructions, /this machine/);
+  });
+});
+
+test('hosted, make_launch_stills refuses a link to a film.json, which the kit would look for on its disk', async () => {
+  await withRealKits(async (client, backend) => {
+    const refused = [
+      'https://example.com/film.json',
+      'https://example.com/plans/FILM.JSON',
+      // A file an earlier job saved that the kit would read as an address.
+      'job:job0/film.txt',
+      '/srv/jobs/job0/film.json',
+      'film.json',
+    ];
+    for (const source of refused) {
+      const result = await client.callTool({ name: 'make_launch_stills', arguments: { source } });
+      assert.equal(result.isError, true, source);
+    }
+    assert.equal(backend.started.length, 0, 'no job started');
+
+    // The website, a link the kit reads as the website, and the film.json an earlier job saved.
+    const taken = ['https://linear.app', 'https://files.example.com/job0/film.json?sig=1', 'job:job0/film.json', 'job:job0/plans/FILM.JSON'];
+    for (const source of taken) {
+      const result = await client.callTool({ name: 'make_launch_stills', arguments: { source, wait_seconds: 0 } });
+      assert.notEqual(result.isError, true, `${source}: ${text(result)}`);
+    }
+    assert.deepEqual(backend.started.map(job => job.input.source), taken);
+
+    // A client that checks the schema itself gets the same rule.
+    const { tools } = await client.listTools();
+    const schema = tools.find(entry => entry.name === 'make_launch_stills').inputSchema.properties.source;
+    const pattern = new RegExp(schema.pattern);
+    assert.deepEqual([...refused, ...taken].map(value => pattern.test(value)), [...refused.map(() => false), ...taken.map(() => true)]);
   });
 });

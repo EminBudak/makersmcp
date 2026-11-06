@@ -317,6 +317,28 @@ test('plan_launch_film from a website has easybrandkit make brand/ again where i
   }, { kitPaths: { easybrandkit: fakeEasybrandkit } });
 });
 
+test('make_launch_stills takes for a film.json what launch-film takes for one, and the rest for an address', { skip: noLaunchFilm }, () => {
+  const stills = kits.find(kit => kit.kit === 'launch-film').tools.find(tool => tool.name === 'make_launch_stills');
+  const asFile = new RegExp(`^(?:${stills.params.source.filePattern})$`);
+  const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-kits-'));
+  try {
+    // Values none of which reach the network: the kit fails on each, saying how it took it.
+    const values = [
+      'https://example.com/film.json', 'https://example.com/plans/FILM.JSON', 'http://example.com/a.Json',
+      path.join(folder, 'missing.json'), path.join(folder, 'Missing.JSON'),
+      path.join(folder, 'film.txt'), path.join(folder, 'film.json.bak'), path.join(folder, 'film.jsonx'),
+    ];
+    for (const value of values) {
+      const run = spawnSync(process.execPath, [launchFilm.script, 'stills', value], { cwd: folder, encoding: 'utf8', timeout: 30_000 });
+      const tookFile = /is not a file/.test(run.stderr);
+      assert.ok(tookFile || /is not an address or a film\.json/.test(run.stderr), `${value}: ${run.stderr}`);
+      assert.equal(asFile.test(value), tookFile, value);
+    }
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 test('what launch-film\'s tools take for a brand kit\'s own files, easybrandkit replaces as its own too', () => {
   const require = createRequire(import.meta.url);
   const { prepareDir } = require('easybrandkit');

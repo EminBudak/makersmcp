@@ -111,12 +111,21 @@ export function buildCommand(
       const text = String(value);
       const kept = (param.type === 'url_or_path' && isUrl(text))
         || (param.type === 'text_or_path' && textPattern(param).test(text));
+      // A kit that tells a file by the value itself, like one that ends in .json, takes what it
+      // matches for a file, a link too, and anything else for an address.
+      const asFile = param.type === 'url_or_path' && param.filePattern !== undefined ? inFull(param.filePattern) : undefined;
+      if (kept && asFile?.test(text)) {
+        throw new ArgumentError(`${name}: the kit takes ${text} for a file, not for an address, and cannot download one. ${param.description}`);
+      }
       if (!kept) {
         if (param.type === 'text_or_path' && isUrl(text)) {
           throw new ArgumentError(`${name}: the kit cannot read a link. Give the text itself, or a file. ${param.description}`);
         }
         value = resolve(name, text);
         if (!existsSync(value as string)) throw new ArgumentError(nothingAt(name, param, value as string, text));
+        if (asFile && !asFile.test(value as string)) {
+          throw new ArgumentError(`${name}: the kit takes ${value as string} for an address, not for a file. ${param.description}`);
+        }
         files.push(value as string);
       }
     }

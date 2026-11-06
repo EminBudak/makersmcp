@@ -112,7 +112,7 @@
       "destructive": true,
       "uses": { "--easybrandkit": "easybrandkit" },
       "params": {
-        "source": { "type": "url_or_path", "required": true, "description": "The product's website, like https://linear.app, or a film.json you already have, whose stills/ go next to it.", "hostedDescription": "The product's website, like https://linear.app, or the film.json an earlier job saved, as job:<job_id>/film.json, so the pictures match that film. A link is always read as a website." },
+        "source": { "type": "url_or_path", "required": true, "filePattern": ".*\\.[jJ][sS][oO][nN]", "description": "The product's website, like https://linear.app, or a film.json you already have, whose stills/ go next to it.", "hostedDescription": "The product's website, like https://linear.app, or the film.json an earlier job saved, as job:<job_id>/film.json, so the pictures match that film. A link is read as the website, and one that ends in .json is refused." },
         "for": { "type": "list", "flag": "--for", "values": ["ph", "og", "x", "play", "chrome"], "description": "Which places to make pictures for (default all of them)." }
       },
       "docs": ["stills/STILLS.md"]
