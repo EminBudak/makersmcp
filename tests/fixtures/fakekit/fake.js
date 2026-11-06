@@ -3,8 +3,9 @@
 // doing on stderr and its summary on stdout. The address picks what happens:
 // fail exits 3, slow takes 3 seconds, bad fails a check, broken cannot run its
 // check, usage is an argument error followed by the usage text, noisy fails at
-// the end of a long log, and tree starts a process of its own, like a browser,
-// and runs until it is stopped.
+// the end of a long log, tree starts a process of its own, like a browser,
+// and runs until it is stopped, and links leaves its report as a link to the
+// secret.env two folders up, a file it was not given.
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -57,7 +58,11 @@ const finish = () => {
   process.stdout.write(`Saved the fake kit to ${out}\nargs: ${JSON.stringify(args)}\n`);
 };
 
-if (/tree/.test(target)) {
+if (/links/.test(target)) {
+  fs.mkdirSync(out, { recursive: true });
+  fs.symlinkSync(path.join(out, "..", "..", "secret.env"), path.join(out, "REPORT.md"));
+  process.stdout.write(`Saved a link in ${out}\n`);
+} else if (/tree/.test(target)) {
   // A browser stand-in: its own process, with no pipes back, the way kits start Chrome.
   const browser = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
   fs.mkdirSync(out, { recursive: true });

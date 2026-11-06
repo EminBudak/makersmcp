@@ -19,8 +19,23 @@ export interface JobSpec {
   check?: boolean;
   /** For a check: what it writes once it has run, "stdout" or a file in the folder (ToolDefinition.report). */
   report?: string;
-  /** The kit's environment. Default: this process's. */
+  /** The kit's environment. Default: this process's. With a launcher, what the launcher gets. */
   env?: NodeJS.ProcessEnv;
+  /**
+   * A command that starts the kit's supervisor in place of node, like
+   * ['sudo', '-n', '-u', '<kit user>', '--', '<wrapper>', 'run'] for a kit that runs as
+   * another user. It gets the kit's script and arguments after its own words, and has to
+   * exec this package's dist/supervise.js with them in place of itself, so that its process
+   * is the supervisor: the one whose stdin, exit status and process group are the job's.
+   * No signal of this process reaches another user's, so a cancel ends that stdin instead,
+   * and the supervisor stops the kit's group itself.
+   */
+  launcher?: string[];
+  /**
+   * Under confine: the folder the docs a job returns and the files it lists must be in,
+   * whatever the kit left in its own folder (viewJob).
+   */
+  within?: string;
 }
 
 const STDOUT_LIMIT = 256 * 1024;
@@ -30,6 +45,14 @@ const KILL_AFTER_MS = 5000;
 
 // Every kit runs under this script, in a process group of its own: see supervise.ts.
 const SUPERVISOR = fileURLToPath(new URL('./supervise.js', import.meta.url));
+
+/** Why a launcher cannot start a supervisor, or nothing when it can. */
+export function launcherProblem(launcher: unknown): string | undefined {
+  if (Array.isArray(launcher) && launcher.length > 0 && launcher.every(word => typeof word === 'string' && word !== '')) {
+    return undefined;
+  }
+  return 'A launcher is the command that starts the supervisor and its arguments, like ["sudo", "-n", "-u", "<kit user>", "--", "<wrapper>", "run"]';
+}
 
 /** Another job is writing to the same folder. */
 export class FolderBusyError extends Error {
@@ -63,21 +86,14 @@ export class Job extends EventEmitter {
   readonly finished: Promise<void>;
   private child?: ChildProcess;
   private canceling = false;
+  private settle!: () => void;
 
   constructor(readonly id: string, readonly spec: JobSpec) {
     super();
-    let settle!: () => void;
     this.finished = new Promise(resolve => {
-      settle = resolve;
+      this.settle = resolve;
     });
-    const end = (status: JobStatus, exitCode: number | null) => {
-      if (this.status !== 'running') return;
-      this.status = status;
-      this.exitCode = exitCode;
-      this.endedAt = Date.now();
-      settle();
-      this.emit('end');
-    };
+    const end = (status: JobStatus, exitCode: number | null) => this.end(status, exitCode);
 
     // A check's report as it was before the run, so one an earlier run left is not taken for this one's.
     const reportFile = spec.check && spec.report && spec.report !== 'stdout' && spec.folder
@@ -92,12 +108,22 @@ export class Job extends EventEmitter {
       return now !== '' && now !== reportBefore;
     };
 
+    if (spec.launcher !== undefined && launcherProblem(spec.launcher)) {
+      this.stderr = `${launcherProblem(spec.launcher)}.`;
+      end('failed', null);
+      return;
+    }
+    // The supervisor, which node starts, or a launcher that becomes it.
+    const [command, ...words] = spec.launcher
+      ? [...spec.launcher, spec.script, ...spec.args]
+      : [process.execPath, SUPERVISOR, spec.script, ...spec.args];
+
     try {
-      this.child = spawn(process.execPath, [SUPERVISOR, spec.script, ...spec.args], {
+      this.child = spawn(command!, words, {
         cwd: spec.cwd,
         env: spec.env ?? process.env,
         // stdin stays open and unused: it closes when this process ends, however it ends,
-        // and the supervisor then stops the kit.
+        // or when a launcher's job is canceled, and the supervisor then stops the kit.
         stdio: ['pipe', 'pipe', 'pipe'],
         // Its own process group on POSIX, so a cancel also stops its Chrome and ffmpeg.
         detached: process.platform !== 'win32',
@@ -141,6 +167,14 @@ export class Job extends EventEmitter {
     });
   }
 
+  /**
+   * The supervisor's process id, which on POSIX is also the process group of the kit and
+   * of what it starts: the group a launcher's own clean-up keeps while the job runs.
+   */
+  get pid(): number | undefined {
+    return this.child?.pid;
+  }
+
   get elapsedSeconds(): number {
     return Math.round(((this.endedAt ?? Date.now()) - this.startedAt) / 1000);
   }
@@ -163,13 +197,36 @@ export class Job extends EventEmitter {
     });
   }
 
-  /** Stops the kit and everything it started: SIGTERM, then SIGKILL after killAfterMs. */
+  /**
+   * Stops the kit and everything it started: SIGTERM, then SIGKILL after killAfterMs.
+   * A launcher's kit may run as another user, whose processes no signal of this one
+   * reaches, so its supervisor's stdin is ended instead, and the supervisor stops the
+   * group. One still running after killAfterMs is given up on: the job ends as canceled,
+   * with a note, and stopping what is left is the launcher's own clean-up.
+   */
   cancel(killAfterMs = KILL_AFTER_MS): Promise<void> {
     if (this.status !== 'running') return this.finished;
     this.canceling = true;
+    if (this.spec.launcher) {
+      this.child?.stdin?.end();
+      const timer = setTimeout(() => {
+        this.note(`The kit had not stopped ${killAfterMs / 1000} s after the cancel, so stopping it is left to its launcher.`);
+        this.end('canceled', null);
+      }, killAfterMs);
+      return this.finished.finally(() => clearTimeout(timer));
+    }
     killTree(this.child, 'SIGTERM');
     const timer = setTimeout(() => killTree(this.child, 'SIGKILL'), killAfterMs);
     return this.finished.finally(() => clearTimeout(timer));
+  }
+
+  private end(status: JobStatus, exitCode: number | null): void {
+    if (this.status !== 'running') return;
+    this.status = status;
+    this.exitCode = exitCode;
+    this.endedAt = Date.now();
+    this.settle();
+    this.emit('end');
   }
 
   /** A line of makersmcp's own after what the kit said. */
@@ -228,7 +285,7 @@ export class JobManager {
     return [...this.jobs.values()];
   }
 
-  /** Stops every running job, when the client goes away. Resolves once they have all ended. */
+  /** Stops every running job, when the client goes away. Resolves once they have all ended, or a launcher's were given up on. */
   closeAll(killAfterMs = KILL_AFTER_MS): Promise<void> {
     const running = this.list().filter(job => job.status === 'running');
     return Promise.all(running.map(job => job.cancel(killAfterMs))).then(() => undefined);

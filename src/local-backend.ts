@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { ArgumentError, buildCommand, expandHome } from './args.js';
 import {
@@ -13,7 +13,7 @@ import {
   type UnavailableKit,
   type WaitOptions,
 } from './backend.js';
-import { FolderBusyError, JobManager, type Job } from './jobs.js';
+import { FolderBusyError, JobManager, launcherProblem, type Job } from './jobs.js';
 import { isInstalled, resolveKit, type InstalledKit, type KitDefinition, type MissingKit } from './kits.js';
 import { setupReport } from './setup.js';
 
@@ -23,6 +23,11 @@ const MAX_ENTRIES = 20_000;
 // Some file systems keep the time a file changed to the second, or to two.
 const MTIME_SLACK_MS = 2000;
 const MAX_DOC_CHARS = 40_000;
+// The most of a doc that is read: more bytes than MAX_DOC_CHARS characters take, so a longer doc is still cut.
+const MAX_DOC_BYTES = 4 * MAX_DOC_CHARS;
+// Windows has neither: there a doc is checked for a link before it is opened.
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+const NONBLOCK = constants.O_NONBLOCK ?? 0;
 const HEAD_LINES = 5;
 const TAIL_LINES = 30;
 
@@ -31,17 +36,41 @@ function skipped(name: string): boolean {
   return name.startsWith('.') || name === 'node_modules';
 }
 
+/** Whether `target` is `root` or inside it, as both are written. */
+function contains(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+/** A folder with its links resolved, or nothing when it is not there. */
+function resolved(folder: string): string | undefined {
+  try {
+    return realpathSync(folder);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The files in a folder, relative to it, at most MAX_FILES: a folder's own files in
  * name order before the files in its subfolders. With `since`, only the files changed
  * from then on, which for a job are the files it saved, whatever the folder held before.
+ * Links are left out, and no folder is entered through one. With `within`, for a folder
+ * a kit wrote under confine, a folder that leads out of `within`, like one a kit swapped
+ * for a link, is not looked in: given such a folder, it lists nothing.
  */
-export function listFiles(folder: string, since?: number): JobFile[] {
+export function listFiles(folder: string, since?: number, within?: string): JobFile[] {
   const files: JobFile[] = [];
+  const root = within === undefined ? undefined : resolved(within);
+  if (within !== undefined && root === undefined) return files;
   const queue = [folder];
   let seen = 0;
   while (queue.length && files.length < MAX_FILES && seen < MAX_ENTRIES) {
     const dir = queue.shift()!;
+    if (root !== undefined) {
+      const real = resolved(dir);
+      if (real === undefined || !contains(root, real)) continue;
+    }
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -59,11 +88,13 @@ export function listFiles(folder: string, since?: number): JobFile[] {
       if (!entry.isFile()) continue;
       let stat;
       try {
-        stat = statSync(full);
+        // Not stat: a file swapped for a link since the folder was read is a link here, and left out.
+        stat = lstatSync(full);
       } catch {
         // Gone since the folder was read, like a lock file or a kit's work file.
         continue;
       }
+      if (!stat.isFile()) continue;
       if (since !== undefined && stat.mtimeMs < since - MTIME_SLACK_MS) continue;
       files.push({ path: path.relative(folder, full), bytes: stat.size });
     }
@@ -71,18 +102,70 @@ export function listFiles(folder: string, since?: number): JobFile[] {
   return files;
 }
 
-/** The kit's notes in a folder, cut at MAX_DOC_CHARS each. */
-export function readDocs(folder: string, names: string[] = []): JobDoc[] {
+/**
+ * Whether the file opened, `opened`, is `file` as reached from `within` through folders
+ * and no link: each step on the way a folder itself, and the file at the end that very
+ * file, which still has one name. A folder on the way swapped for a link fails the first
+ * check while it is one, and the second once it is swapped back.
+ */
+function reachedFrom(within: string, file: string, fd: number, opened: BigIntStats): boolean {
+  if (!contains(within, file)) return false;
+  const steps = path.relative(within, file).split(path.sep);
+  let at = within;
+  for (const [i, step] of steps.entries()) {
+    at = path.join(at, step);
+    const stat = lstatSync(at, { bigint: true });
+    if (i < steps.length - 1 ? !stat.isDirectory() : stat.dev !== opened.dev || stat.ino !== opened.ino) return false;
+  }
+  return fstatSync(fd, { bigint: true }).nlink === 1n;
+}
+
+/**
+ * A doc's text, or nothing when it is not a file to read. A kit wrote the folder, and it
+ * may run as another user than this process: a doc is opened without following a link,
+ * which could lead to a file only this process's user may read, and without waiting on a
+ * fifo, which would hold this process. It is read only when it is a regular file with one
+ * name, since a second name, a hard link, makes it a file of elsewhere too, and with
+ * `within` only when it is reached from there through folders and no link.
+ */
+function readDoc(file: string, within?: string): string | undefined {
+  let fd: number;
+  try {
+    if (!NOFOLLOW && lstatSync(file).isSymbolicLink()) return undefined;
+    fd = openSync(file, constants.O_RDONLY | NOFOLLOW | NONBLOCK);
+  } catch {
+    return undefined;
+  }
+  try {
+    const stat = fstatSync(fd, { bigint: true });
+    if (!stat.isFile() || stat.nlink !== 1n) return undefined;
+    if (within !== undefined && !reachedFrom(within, file, fd, stat)) return undefined;
+    const buffer = Buffer.alloc(Number(stat.size < MAX_DOC_BYTES ? stat.size : MAX_DOC_BYTES));
+    let length = 0;
+    while (length < buffer.length) {
+      const read = readSync(fd, buffer, length, buffer.length - length, length);
+      if (read === 0) break;
+      length += read;
+    }
+    return buffer.subarray(0, length).toString('utf8');
+  } catch {
+    return undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The kit's notes in a folder, cut at MAX_DOC_CHARS each. A doc that is not a regular file
+ * with one name, like a link, a fifo or a hard link, is left out as a missing one is, and
+ * so is one not reached from `within` through folders, when that is given (readDoc).
+ */
+export function readDocs(folder: string, names: string[] = [], within?: string): JobDoc[] {
   const docs: JobDoc[] = [];
   for (const name of names) {
     const file = path.join(folder, name);
-    let text;
-    try {
-      text = readFileSync(file, 'utf8');
-    } catch {
-      // Not there, or not a file.
-      continue;
-    }
+    const text = readDoc(file, within);
+    if (text === undefined) continue;
     docs.push(text.length > MAX_DOC_CHARS
       ? { name, text: text.slice(0, MAX_DOC_CHARS), more: file }
       : { name, text });
@@ -137,8 +220,8 @@ export function viewJob(job: Job): JobView {
     // What the kit said at the end: its summary on stdout, or its last lines when it writes only to stderr.
     view.summary = job.stdout.trim() || tail(job.stderr, 12);
     if (spec.folder) {
-      view.files = listFiles(spec.folder, job.startedAt);
-      view.docs = readDocs(spec.folder, spec.docs);
+      view.files = listFiles(spec.folder, job.startedAt, spec.within);
+      view.docs = readDocs(spec.folder, spec.docs, spec.within);
     }
   }
   return view;
@@ -153,9 +236,18 @@ export interface LocalBackendOptions {
   env?: NodeJS.ProcessEnv;
   /**
    * Refuse every file and folder outside baseDir, like an out_dir or a file elsewhere.
-   * For a service that brings each job's inputs into the job's own baseDir.
+   * For a service that brings each job's inputs into the job's own baseDir. A job then
+   * also returns only docs and files a kit left inside baseDir (listFiles, readDocs).
    */
   confine?: boolean;
+  /**
+   * A command that starts each kit's supervisor in place of node, for a service whose
+   * kits run as another user, like ['sudo', '-n', '-u', '<kit user>', '--', '<wrapper>', 'run']
+   * (JobSpec.launcher). A cancel then ends the supervisor's stdin, since no signal reaches
+   * another user's process, and Job.pid is the process group the launcher's own clean-up
+   * keeps while the job runs.
+   */
+  launcher?: string[];
 }
 
 /** Runs kits on this machine, each job a process of its own, saving into baseDir. */
@@ -167,6 +259,7 @@ export class LocalBackend implements KitBackend {
   private readonly kitPaths?: Record<string, string>;
   private readonly env?: NodeJS.ProcessEnv;
   private readonly confine: boolean;
+  private readonly launcher?: string[];
   private kits: Array<InstalledKit | MissingKit> = [];
   private readonly installed = new Map<string, InstalledKit>();
 
@@ -175,6 +268,11 @@ export class LocalBackend implements KitBackend {
     this.kitPaths = options.kitPaths;
     this.env = options.env;
     this.confine = options.confine === true;
+    if (options.launcher !== undefined) {
+      const problem = launcherProblem(options.launcher);
+      if (problem) throw new TypeError(problem);
+      this.launcher = [...options.launcher];
+    }
   }
 
   available(definitions: KitDefinition[]): Array<AvailableKit | UnavailableKit> {
@@ -219,6 +317,8 @@ export class LocalBackend implements KitBackend {
         check: tool.check,
         report: tool.report,
         env: this.env,
+        ...(this.launcher ? { launcher: this.launcher } : {}),
+        ...(this.confine ? { within: this.baseDir } : {}),
       }));
     } catch (error) {
       if (error instanceof FolderBusyError) {

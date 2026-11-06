@@ -404,17 +404,20 @@ test('a file that goes away while a folder is listed is left out', () => {
   writeFileSync(path.join(dir, 'gone.lock'), 'x');
   writeFileSync(path.join(dir, 'kept.txt'), 'x');
   mkdirSync(path.join(dir, 'NOTES.md'));
-  const { statSync } = fs;
-  fs.statSync = (file, ...rest) => {
+  // Gone once the folder was read, whichever of the two a listing asks.
+  const { statSync, lstatSync } = fs;
+  const gone = original => (file, ...rest) => {
     if (String(file).endsWith('gone.lock')) throw Object.assign(new Error(`ENOENT: no such file or directory, stat '${file}'`), { code: 'ENOENT' });
-    return statSync(file, ...rest);
+    return original(file, ...rest);
   };
+  fs.statSync = gone(statSync);
+  fs.lstatSync = gone(lstatSync);
   syncBuiltinESMExports();
   try {
     assert.deepEqual(listFiles(dir).map(file => file.path), ['kept.txt']);
     assert.deepEqual(readDocs(dir, ['NOTES.md', 'kept.txt']).map(doc => doc.name), ['kept.txt']);
   } finally {
-    fs.statSync = statSync;
+    Object.assign(fs, { statSync, lstatSync });
     syncBuiltinESMExports();
     rmSync(dir, { recursive: true, force: true });
   }
