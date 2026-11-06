@@ -45,7 +45,8 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
   - `string`, `integer` and `number`; `min` and `max` bound the numbers. Every number needs both, set to what the kit itself accepts: `npm test` tries each bound with the kit.
   - `boolean` passes its flag when it is true, or with `"when": false` when it is false, for flags like `--no-music`.
   - `enum` takes one of its `values`. `list` takes several, joined with commas into one flag. `repeat` passes the flag once for each item.
-- `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported. `otherwise` is used without the flag when `name` cannot be filled, like `{host}` when the tool was given a file.
+- `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported.
+  - `otherwise`: where the kit saves when `name` cannot be filled, like `{dir:source}` when the tool was given a file instead of an address. The kit picks that folder itself and takes no flag for it, so an `out_dir` other than that folder is refused.
   - `replaces`: folders in the folder the kit is given that it deletes and makes again, each with the file that marks one a kit made, like `{ "brand": "brand.json" }`. makersmcp does not start the kit when such a folder holds anything else, or holds a file the call names. Mark the tool `destructive` too.
 - `docs`: Markdown files in the folder to return with the result.
 - `check`: the kit exits with 1 when a check fails. That is a normal result, not an error.

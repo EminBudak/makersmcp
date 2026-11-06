@@ -102,9 +102,18 @@ function waitFor(context: ToolContext, id: string, seconds: number, extra: Extra
   return context.backend.wait(id, seconds, { signal: extra.signal, onLine });
 }
 
+/** A folder name template in words, like "the folder of source" for {dir:source}. */
+function inWords(template: string): string {
+  return template
+    .replace(/\{dir:(\w+)\}/g, 'the folder of $1')
+    .replace(/\{stem:(\w+)\}/g, "$1's name")
+    .replace(/\{host\}/g, "the site's host");
+}
+
 function outDirHelp(tool: ToolDefinition, baseDir: string | undefined): string {
   const out = tool.out!;
   let help = `Folder to save into, absolute or relative to ${baseDir}. Default: ${out.name}.`;
+  if (out.otherwise) help += ` Given a file instead of an address, the kit saves in ${inWords(out.otherwise)} and takes no out_dir.`;
   if (out.replaces) {
     const names = Object.keys(out.replaces).map(name => `${name}/`);
     const folders = names.length > 1 ? `the ${names.join(' and ')} folders` : `the ${names[0]} folder`;

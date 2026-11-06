@@ -139,15 +139,21 @@ export function buildCommand(
   if (tool.out) {
     const given = typeof input.out_dir === 'string' && input.out_dir ? input.out_dir : undefined;
     const named = fill(tool.out.name, tool, values);
-    if (given !== undefined || named !== undefined) {
+    const other = named === undefined && tool.out.otherwise !== undefined
+      ? fill(tool.out.otherwise, tool, values)
+      : undefined;
+    if (other !== undefined) {
+      // The kit picks this folder itself and takes no flag for it.
+      folder = path.resolve(baseDir, other);
+      if (given !== undefined && resolve('out_dir', given) !== folder) {
+        throw new ArgumentError(`out_dir: with these arguments ${tool.name} saves in ${folder} and cannot save anywhere else. Leave out_dir out.`);
+      }
+    } else if (given !== undefined || named !== undefined) {
       folder = given !== undefined ? resolve('out_dir', given) : path.resolve(baseDir, named!);
       if (tool.out.flag) {
         refuseReplacing(tool, folder, files);
         args.push(tool.out.flag, folder);
       }
-    } else if (tool.out.otherwise) {
-      const other = fill(tool.out.otherwise, tool, values);
-      if (other !== undefined) folder = path.resolve(baseDir, other);
     }
   }
 

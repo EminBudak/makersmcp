@@ -7,7 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { buildCommand } from '../dist/args.js';
+import { ArgumentError, buildCommand } from '../dist/args.js';
 import { DRAFT_2020_12 } from '../dist/schema-dialect.js';
 import { LocalBackend, createMcpServer, expandHome, failureText, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
 import { defaultOutDir } from '../dist/setup.js';
@@ -374,6 +374,30 @@ test('closing the server stops a running kit and the processes it started', asyn
     assert.ok(await until(() => !alive(pids.kit) && !alive(pids.browser)), 'the kit and its browser are gone');
   } finally {
     for (const pid of Object.values(pids)) if (alive(pid)) process.kill(pid, 'SIGKILL');
+  }
+});
+
+test('with a file instead of a website, make_launch_stills saves next to it and refuses another out_dir', () => {
+  const stills = tool('make_launch_stills');
+  const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  try {
+    mkdirSync(path.join(baseDir, 'project'));
+    writeFileSync(path.join(baseDir, 'project', 'film.json'), '{}');
+    const context = { baseDir, installed: new Map() };
+    const film = path.join(baseDir, 'project', 'film.json');
+    assert.throws(
+      () => buildCommand(stills, { source: 'project/film.json', out_dir: 'stills-here' }, context),
+      error => error instanceof ArgumentError && /out_dir: with these arguments make_launch_stills saves in .*project and cannot save anywhere else/.test(error.message),
+    );
+    for (const input of [{ source: 'project/film.json' }, { source: 'project/film.json', out_dir: 'project' }]) {
+      const command = buildCommand(stills, input, context);
+      assert.equal(command.folder, path.join(baseDir, 'project'));
+      assert.deepEqual(command.args, ['stills', film]);
+    }
+    const site = buildCommand(stills, { source: 'https://linear.app', out_dir: 'stills-here' }, context);
+    assert.deepEqual(site.args, ['stills', 'https://linear.app', '--out', path.join(baseDir, 'stills-here')]);
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
   }
 });
 

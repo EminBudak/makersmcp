@@ -47,7 +47,10 @@ export interface OutDefinition {
   flag?: string;
   /** The folder's name, with {host}, {dir:param} and {stem:param}. */
   name: string;
-  /** Used without the flag when `name` cannot be filled, like {host} for a file. */
+  /**
+   * Where the kit saves when `name` cannot be filled, like {host} for a file. The kit
+   * picks that folder itself and takes no flag for it, so out_dir cannot move it.
+   */
   otherwise?: string;
   /**
    * Folders in the folder given with `flag` that the kit deletes and makes again, each
