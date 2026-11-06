@@ -38,13 +38,15 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
 ## A tool
 
 - `name`, `title`, `description`: what the agent sees. Write the description for an agent: what the tool makes, which files, and which one to read first.
+- `hostedDescription`: the description when the kits run on a hosted server instead, where the agent has no files of its own and gives them as links or as `job:<job_id>/<path>`. Give one when the description says "on this machine" or asks the agent to edit a file.
 - `args`: the kit's positional arguments, like `["demo", "{url}"]`. `{param}` is that parameter's value.
 - `params`: each one has a `type`, a `description`, and a place in `args` or a `flag`. A parameter in `args` must be `required`.
-  - `url` is an http or https address. `path` is a file or folder; a relative one is read from the output folder, and it must exist. `url_or_path` is either.
+  - `url` is an http or https address. `path` is a file or folder; a relative one is read from the output folder, and it must exist. `url_or_path` is either. Give an address example with `https://` in the description, like https://linear.app, since makersmcp reads anything without it as a file.
   - `text_or_path` is text the kit takes as it is, or a file, like the cuts of a video as `3.2,7.5` or a JSON file. Its `pattern` is a regular expression for the text, matched in full; any other value is a file, read like a `path`. A parameter that takes a file in any form is never a plain `string`: on a hosted server only the file types are brought in as links, and a `string` would reach the kit as a path on the server.
   - `string`, `integer` and `number`; `min` and `max` bound the numbers. Every number needs both, set to what the kit itself accepts: `npm test` tries each bound with the kit.
   - `boolean` passes its flag when it is true, or with `"when": false` when it is false, for flags like `--no-music`.
   - `enum` takes one of its `values`. `list` takes several, joined with commas into one flag. `repeat` passes the flag once for each item.
+  - `hostedDescription`: the parameter's description on a hosted server, in place of the usual words about links.
 - `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported.
   - `otherwise`: where the kit saves when `name` cannot be filled, like `{dir:source}` when the tool was given a file instead of an address. The kit picks that folder itself and takes no flag for it, so an `out_dir` other than that folder is refused.
   - `replaces`: folders in the folder the kit is given that it deletes and makes again, each with the file that marks one a kit made, like `{ "brand": "brand.json" }`. makersmcp does not start the kit when such a folder holds anything else, or holds a file the call names. Mark the tool `destructive` too.

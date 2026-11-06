@@ -30,29 +30,34 @@ const HOSTED_FILE_HELP = ' Give an https link to the file, or job:<job_id>/<path
 const HOSTED_TEXT_OR_FILE_HELP = ' For a file, give an https link to it, or job:<job_id>/<path> for a file an earlier job saved.';
 
 function paramSchema(param: ParamDefinition, where: KitBackend['where']): z.ZodType {
+  const hosted = where === 'hosted';
   let schema: z.ZodType;
-  let description = param.description;
+  // A hosted text of its own replaces the usual words about links.
+  let description = hosted && param.hostedDescription ? param.hostedDescription : param.description;
+  const linkHelp = (help: string) => {
+    if (!param.hostedDescription) description += help;
+  };
   switch (param.type) {
     case 'url':
       schema = z.string().regex(/^https?:\/\/\S+$/i, 'an address starting with http:// or https://');
       break;
     case 'path':
     case 'url_or_path':
-      if (where === 'hosted') {
+      if (hosted) {
         schema = z.string().regex(HOSTED_FILE, 'an https link, or job:<job_id>/<path>');
-        description += HOSTED_FILE_HELP;
+        linkHelp(HOSTED_FILE_HELP);
       } else {
         schema = z.string().min(1);
       }
       break;
     case 'text_or_path':
-      if (where === 'hosted') {
+      if (hosted) {
         // The text as the kit takes it, or a file the service brings in. Never a path on its disk.
         schema = z.string().regex(
           new RegExp(`^(?:${param.pattern})$|^${HOSTED_FILE_SOURCE}$`, 'i'),
           'the text itself, an https link, or job:<job_id>/<path>',
         );
-        description += HOSTED_TEXT_OR_FILE_HELP;
+        linkHelp(HOSTED_TEXT_OR_FILE_HELP);
       } else {
         schema = z.string().min(1);
       }
@@ -124,19 +129,21 @@ function outDirHelp(tool: ToolDefinition, baseDir: string | undefined): string {
 
 export function registerKitTool(server: McpServer, context: ToolContext, kit: AvailableKit, tool: ToolDefinition): void {
   const { backend } = context;
+  const hosted = backend.where === 'hosted';
   const inputSchema: Record<string, z.ZodType> = {};
   for (const [name, param] of Object.entries(tool.params)) inputSchema[name] = paramSchema(param, backend.where);
-  if (tool.out?.flag && backend.where === 'local') {
+  if (tool.out?.flag && !hosted) {
     inputSchema['out_dir'] = z.string().min(1).optional().describe(outDirHelp(tool, context.baseDir));
   }
   inputSchema['wait_seconds'] = waitSeconds;
-  const place = backend.place ?? (backend.where === 'local' ? 'on this machine' : 'on a server');
+  const place = backend.place ?? (hosted ? 'on a server' : 'on this machine');
+  const description = hosted && tool.hostedDescription ? tool.hostedDescription : tool.description;
 
   server.registerTool(
     tool.name,
     {
       title: tool.title,
-      description: `${tool.description} (${kit.definition.kit} ${kit.version}, ${place}.)`,
+      description: `${description} (${kit.definition.kit} ${kit.version}, ${place}.)`,
       inputSchema,
       outputSchema: jobOutputSchema,
       annotations: {

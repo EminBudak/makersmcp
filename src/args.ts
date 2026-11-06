@@ -166,6 +166,9 @@ export function buildCommand(
 }
 
 function nothingAt(name: string, param: ParamDefinition, full: string, text: string): string {
+  if (param.type === 'url_or_path') {
+    return `${name}: there is nothing at ${full}. A website's address starts with https://, like https://linear.app.`;
+  }
   if (param.type === 'text_or_path') {
     return `${name}: there is nothing at ${full}, and "${text}" is not text the kit takes. ${param.description}`;
   }

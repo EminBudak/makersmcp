@@ -25,12 +25,15 @@ test('every check tool says what its report is, so a kit error is not taken for 
   }
 });
 
-test('every number has its bounds', () => {
+test('every number has its bounds, and every address an example with https://', () => {
   for (const kit of kits) {
     for (const tool of kit.tools) {
       for (const [name, param] of Object.entries(tool.params)) {
         if (param.type === 'integer' || param.type === 'number') {
           assert.ok(param.min !== undefined && param.max !== undefined, `${tool.name}.${name} needs min and max`);
+        }
+        if (param.type === 'url' || param.type === 'url_or_path') {
+          assert.match(param.description, /https:\/\/\S+/, `${tool.name}.${name}`);
         }
       }
     }

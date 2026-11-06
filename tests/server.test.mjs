@@ -401,6 +401,14 @@ test('with a file instead of a website, make_launch_stills saves next to it and 
   }
 });
 
+test('an address without https:// is not taken for a missing file without saying so', async () => {
+  await withClient({}, async client => {
+    const result = await client.callTool({ name: 'fake_file', arguments: { file: 'linear.app' } });
+    assert.equal(result.isError, true);
+    assert.match(text(result), /there is nothing at .*linear\.app\. A website's address starts with https:\/\/, like https:\/\/linear\.app\./);
+  });
+});
+
 test('a text_or_path parameter passes its text as it is and a file as a path', () => {
   const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
   try {

@@ -60,7 +60,7 @@
       "report": "stdout",
       "readOnly": true,
       "params": {
-        "manifest": { "type": "url_or_path", "required": true, "description": "The manifest's file or address, or the site's address." }
+        "manifest": { "type": "url_or_path", "required": true, "description": "The manifest's file or address, or the site's address, like https://linear.app." }
       }
     }
   ]

@@ -209,3 +209,26 @@ test('hosted, no kit param that names a file is plain text, so none skips the fi
     }
   }
 });
+
+test('hosted, the tool descriptions speak of the server, not of the agent\'s machine or of editing its files', async () => {
+  await withRealKits(async client => {
+    const { tools } = await client.listTools();
+    for (const entry of tools) {
+      const texts = [entry.description, ...Object.values(entry.inputSchema.properties ?? {}).map(param => param.description ?? '')];
+      for (const words of texts) {
+        assert.doesNotMatch(words, /this machine/i, entry.name);
+        assert.doesNotMatch(words, /\bedit/i, entry.name);
+      }
+    }
+    const byName = Object.fromEntries(tools.map(entry => [entry.name, entry]));
+    assert.match(byName.render_launch_film.description, /^Renders the film\.json of an earlier make_launch_film or plan_launch_film job/);
+    assert.match(byName.render_launch_film.inputSchema.properties.film.description, /job:<job_id>\/film\.json/);
+    assert.match(byName.plan_launch_film.description, /A film\.json cannot be changed here yet/);
+    const source = byName.make_launch_stills.inputSchema.properties.source.description;
+    assert.match(source, /job:<job_id>\/film\.json/);
+    assert.match(source, /A link is always read as a website\./);
+    assert.doesNotMatch(source, /Give an https link to the file/);
+    // A manifest link works, since the kit fetches it.
+    assert.match(byName.check_pwa_screenshots.inputSchema.properties.manifest.description, /Give an https link to the file/);
+  });
+});

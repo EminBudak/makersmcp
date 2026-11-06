@@ -26,6 +26,11 @@ export type ParamType =
 export interface ParamDefinition {
   type: ParamType;
   description: string;
+  /**
+   * What the agent reads instead when the kits run on a hosted server, where a file
+   * comes as a link or as job:<job_id>/<path>. It replaces the usual words about links.
+   */
+  hostedDescription?: string;
   required?: boolean;
   /** The kit's flag. A parameter without one is used in `args`. */
   flag?: string;
@@ -64,6 +69,8 @@ export interface ToolDefinition {
   name: string;
   title: string;
   description: string;
+  /** The description when the kits run on a hosted server, where the agent has no files of its own. */
+  hostedDescription?: string;
   /** The kit's positional arguments, like ["demo", "{url}"]. */
   args: string[];
   params: Record<string, ParamDefinition>;
@@ -143,11 +150,13 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
   for (const tool of definition.tools) {
     if (!NAME.test(tool.name)) fail(`tool name "${tool.name}" must be snake_case`);
     if (!tool.title || !tool.description) fail(`${tool.name} needs a title and a description`);
+    if (tool.hostedDescription !== undefined && !tool.hostedDescription) fail(`${tool.name}: an empty hostedDescription`);
     for (const [name, param] of Object.entries(tool.params)) {
       if (!NAME.test(name) || RESERVED_PARAMS.has(name)) fail(`${tool.name}: "${name}" cannot be a parameter name`);
       if (!PARAM_TYPES.has(param.type)) fail(`${tool.name}.${name}: unknown type "${param.type}"`);
       if (param.type === 'enum' && !param.values?.length) fail(`${tool.name}.${name}: an enum needs values`);
       if (param.flag !== undefined && !/^--?[a-z]/.test(param.flag)) fail(`${tool.name}.${name}: bad flag "${param.flag}"`);
+      if (param.hostedDescription !== undefined && !param.hostedDescription) fail(`${tool.name}.${name}: an empty hostedDescription`);
       if (param.type === 'text_or_path') {
         if (!param.pattern) fail(`${tool.name}.${name}: text_or_path needs the pattern of its text`);
         try {
