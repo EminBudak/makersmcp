@@ -147,7 +147,7 @@ export function viewJob(job: Job): JobView {
 export interface LocalBackendOptions {
   /** Where kits save, and what relative paths are read from. A leading ~ is the home folder. */
   baseDir: string;
-  /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }. */
+  /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }. A leading ~ is the home folder. */
   kitPaths?: Record<string, string>;
   /** The environment kits run with. Default: this process's. A service can keep its own secrets from them. */
   env?: NodeJS.ProcessEnv;

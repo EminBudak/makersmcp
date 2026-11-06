@@ -161,7 +161,7 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 | --- | --- | --- |
 | `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`; leave it out or give `all` for every kit |
 | `--out <dir>` | `MAKERSMCP_OUT` | where the folders go, made with the first job; `~` is your home folder |
-| `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package |
+| `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package; `~` is your home folder |
 | `--check` | | prints the kits, Chrome, ffmpeg and the folder, and exits |
 
 ## Use it in your own server

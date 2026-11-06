@@ -1,8 +1,8 @@
 // makersmcp over stdio, started the way an MCP client starts it, with easybrandkit's
 // tools running the fake kit: what happens to the jobs when the client goes away.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -113,6 +113,31 @@ test('started outside any project, as Claude Desktop does, the files go to ~/mak
     assert.match(tilde, new RegExp(`Files go to ${path.join(home, 'films').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `));
   } finally {
     await client?.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a kit path that starts with ~ is in the home folder, from --kit-path and from MAKERSMCP_KIT_PATHS', { skip: posix }, () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-home-'));
+  try {
+    mkdirSync(path.join(home, 'kits'));
+    symlinkSync(fakekit, path.join(home, 'kits', 'fakekit'));
+    const { MAKERSMCP_OUT, MAKERSMCP_KITS, MAKERSMCP_KIT_PATHS, ...rest } = process.env;
+    const check = (args, env = {}) => {
+      const run = spawnSync(process.execPath, [bin, '--check', '--kits', 'easybrandkit', ...args], {
+        cwd: home, env: { ...rest, HOME: home, ...env }, encoding: 'utf8',
+      });
+      assert.equal(run.status, 0, run.stderr);
+      return run.stdout;
+    };
+    for (const output of [
+      check(['--kit-path', 'easybrandkit=~/kits/fakekit']),
+      check([], { MAKERSMCP_KIT_PATHS: 'easybrandkit=~/kits/fakekit' }),
+    ]) {
+      assert.match(output, /^- easybrandkit \(design\): 1\.2\.3, on\./m);
+    }
+    assert.ok(!existsSync(path.join(home, '~')), 'no folder named ~');
+  } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });

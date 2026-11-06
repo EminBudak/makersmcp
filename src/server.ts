@@ -48,7 +48,7 @@ export interface MakersMcpOptions {
   kits?: string[];
   /** Where kits save, and what relative paths are read from. For the local backend. */
   outDir?: string;
-  /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }. For the local backend. */
+  /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }; ~ is the home folder. For the local backend. */
   kitPaths?: Record<string, string>;
   /** Kit definitions to use instead of the ones in kits/. */
   definitions?: KitDefinition[];

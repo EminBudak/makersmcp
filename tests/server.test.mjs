@@ -11,7 +11,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ArgumentError, buildCommand } from '../dist/args.js';
 import { DRAFT_2020_12 } from '../dist/schema-dialect.js';
 import {
-  LocalBackend, createMcpServer, expandHome, failureText, listFiles, loadKitDefinitions, readDocs, validateKitDefinition,
+  LocalBackend, createMcpServer, expandHome, failureText, listFiles, loadKitDefinitions, readDocs, resolveKit, validateKitDefinition,
 } from '../dist/server.js';
 import { defaultOutDir } from '../dist/setup.js';
 
@@ -307,6 +307,26 @@ test('~ is the home folder in the folder settings and in out_dir', () => {
   }
   const command = buildCommand(definitions[0].tools[0], { url: 'https://example.com', out_dir: '~/brand' }, { baseDir: fixtures, installed: new Map() });
   assert.equal(command.folder, path.join(os.homedir(), 'brand'));
+});
+
+test('~ is the home folder in a kit path too', { skip: process.platform === 'win32' && 'HOME is not the home folder there' }, () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-home-'));
+  const before = process.env.HOME;
+  try {
+    mkdirSync(path.join(home, 'kits'));
+    symlinkSync(fakekitDir, path.join(home, 'kits', 'fakekit'));
+    process.env.HOME = home;
+    const kit = resolveKit(definitions[0], { fakekit: '~/kits/fakekit' });
+    assert.equal(kit.reason, undefined);
+    assert.equal(kit.dir, path.join(home, 'kits', 'fakekit'));
+    assert.equal(kit.version, '1.2.3');
+    const backend = new LocalBackend({ baseDir: home, kitPaths: { fakekit: '~/kits/fakekit' } });
+    assert.deepEqual(backend.available([definitions[0]]).map(entry => entry.version), ['1.2.3']);
+  } finally {
+    if (before === undefined) delete process.env.HOME;
+    else process.env.HOME = before;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test('an argument error keeps the kit\'s reason and leaves out its usage text', async () => {

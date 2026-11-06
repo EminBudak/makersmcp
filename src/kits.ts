@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { expandHome } from './args.js';
 
 /**
  * A kit is a command line tool in its own repository and npm package. makersmcp
@@ -226,7 +227,8 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
 
 /**
  * Finds a kit's package: the path given for it in kitPaths when there is one
- * (a checkout, for development), else the package installed next to makersmcp.
+ * (a checkout, for development; a leading ~ is the home folder), else the package
+ * installed next to makersmcp.
  */
 export function resolveKit(
   definition: KitDefinition,
@@ -235,7 +237,8 @@ export function resolveKit(
   let dir: string;
   const given = kitPaths[definition.kit];
   if (given) {
-    dir = path.resolve(given);
+    // A client's JSON settings and MAKERSMCP_KIT_PATHS reach makersmcp without a shell to read ~.
+    dir = path.resolve(expandHome(given));
     if (!existsSync(path.join(dir, 'package.json'))) {
       return { definition, reason: `no package.json in ${dir}` };
     }
