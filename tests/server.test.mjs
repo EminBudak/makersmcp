@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,7 +10,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ArgumentError, buildCommand } from '../dist/args.js';
 import { DRAFT_2020_12 } from '../dist/schema-dialect.js';
-import { LocalBackend, createMcpServer, expandHome, failureText, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
+import {
+  LocalBackend, createMcpServer, expandHome, failureText, listFiles, loadKitDefinitions, readDocs, validateKitDefinition,
+} from '../dist/server.js';
 import { defaultOutDir } from '../dist/setup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -113,7 +116,8 @@ test('a finished job returns its summary, folder, files and docs', async () => {
     const folder = path.join(outDir, 'fakekit-example.com');
     assert.equal(result.structuredContent.status, 'done');
     assert.equal(result.structuredContent.folder, folder);
-    assert.deepEqual(result.structuredContent.files.map(file => file.path), [path.join('parts', 'data.json'), 'REPORT.md']);
+    // A folder's own files come before the files in its subfolders.
+    assert.deepEqual(result.structuredContent.files.map(file => file.path), ['REPORT.md', path.join('parts', 'data.json')]);
     assert.match(text(result), /## Fake make: done in \d+ s/);
     assert.match(text(result), /### REPORT\.md\n\n# Report\n\nMade from https:\/\/www\.example\.com\//);
     assert.doesNotMatch(text(result), /MISSING\.md/);
@@ -358,6 +362,42 @@ test('a check with a report file counts only a report it wrote this run', async 
     const good = await client.callTool({ name: 'fake_report', arguments: { url: 'https://good.example.com' } });
     assert.equal(good.structuredContent.passed, true);
   });
+});
+
+test('a job lists the files it saved, not what its folder already held', async () => {
+  await withClient({}, async (client, outDir) => {
+    // A project the agent saves into with out_dir ".".
+    const old = Date.now() / 1000 - 3600;
+    for (const file of ['.git/HEAD', '.git/objects/ab/cdef', 'node_modules/x/index.js', 'README.md', 'src/app.js']) {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), 'x');
+      utimesSync(path.join(outDir, file), old, old);
+    }
+    const result = await client.callTool({ name: 'fake_make', arguments: { url: 'https://example.com', out_dir: '.' } });
+    assert.equal(result.structuredContent.folder, outDir);
+    assert.deepEqual(result.structuredContent.files.map(file => file.path), ['REPORT.md', path.join('parts', 'data.json')]);
+  });
+});
+
+test('a file that goes away while a folder is listed is left out', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  writeFileSync(path.join(dir, 'gone.lock'), 'x');
+  writeFileSync(path.join(dir, 'kept.txt'), 'x');
+  mkdirSync(path.join(dir, 'NOTES.md'));
+  const { statSync } = fs;
+  fs.statSync = (file, ...rest) => {
+    if (String(file).endsWith('gone.lock')) throw Object.assign(new Error(`ENOENT: no such file or directory, stat '${file}'`), { code: 'ENOENT' });
+    return statSync(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  try {
+    assert.deepEqual(listFiles(dir).map(file => file.path), ['kept.txt']);
+    assert.deepEqual(readDocs(dir, ['NOTES.md', 'kept.txt']).map(doc => doc.name), ['kept.txt']);
+  } finally {
+    fs.statSync = statSync;
+    syncBuiltinESMExports();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('closing the server stops a running kit and the processes it started', async () => {

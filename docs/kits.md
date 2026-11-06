@@ -57,7 +57,7 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
 - `readOnly`: the tool writes nothing.
 - `destructive`: the tool may delete or replace files already in its folder, so a client may ask before it runs.
 
-makersmcp adds `out_dir` and `wait_seconds` to every tool. It starts the kit, sends each line the kit writes to stderr as progress, and returns the kit's stdout as the summary, with the folder, its files and the docs. A kit that takes longer than `wait_seconds` keeps running, and the tool returns a `job_id` for `wait_for_job`. When a kit fails, the agent gets what it said on stderr: for an argument error (exit code 2), the reason without the usage text after it.
+makersmcp adds `out_dir` and `wait_seconds` to every tool. It starts the kit, sends each line the kit writes to stderr as progress, and returns the kit's stdout as the summary, with the folder, the files the job saved in it and the docs. A kit that takes longer than `wait_seconds` keeps running, and the tool returns a `job_id` for `wait_for_job`. When a kit fails, the agent gets what it said on stderr: for an argument error (exit code 2), the reason without the usage text after it.
 
 Each kit runs in a process group of its own, with the browser and ffmpeg it starts, under a small supervisor (`dist/supervise.js`). `cancel_job` stops the group, and so does the supervisor once makersmcp is gone, however it ended.
 

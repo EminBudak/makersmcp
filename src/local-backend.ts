@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { ArgumentError, buildCommand, expandHome } from './args.js';
 import {
@@ -18,28 +18,56 @@ import { isInstalled, resolveKit, type InstalledKit, type KitDefinition, type Mi
 import { setupReport } from './setup.js';
 
 const MAX_FILES = 200;
+// Entries looked at in one listing, so a folder that holds a whole project stays quick.
+const MAX_ENTRIES = 20_000;
+// Some file systems keep the time a file changed to the second, or to two.
+const MTIME_SLACK_MS = 2000;
 const MAX_DOC_CHARS = 40_000;
 const HEAD_LINES = 5;
 const TAIL_LINES = 30;
 
-/** The files in a folder, relative to it, in name order, at most MAX_FILES. */
-export function listFiles(folder: string): JobFile[] {
+/** Never listed: hidden files and folders, like .git and a kit's .work- folders, and node_modules. */
+function skipped(name: string): boolean {
+  return name.startsWith('.') || name === 'node_modules';
+}
+
+/**
+ * The files in a folder, relative to it, at most MAX_FILES: a folder's own files in
+ * name order before the files in its subfolders. With `since`, only the files changed
+ * from then on, which for a job are the files it saved, whatever the folder held before.
+ */
+export function listFiles(folder: string, since?: number): JobFile[] {
   const files: JobFile[] = [];
-  const walk = (dir: string) => {
+  const queue = [folder];
+  let seen = 0;
+  while (queue.length && files.length < MAX_FILES && seen < MAX_ENTRIES) {
+    const dir = queue.shift()!;
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
-      return;
+      continue;
     }
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (files.length >= MAX_FILES) return;
+    const sorted = entries.filter(entry => !skipped(entry.name)).sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of sorted) {
+      if (files.length >= MAX_FILES || ++seen > MAX_ENTRIES) break;
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) files.push({ path: path.relative(folder, full), bytes: statSync(full).size });
+      if (entry.isDirectory()) {
+        queue.push(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      let stat;
+      try {
+        stat = statSync(full);
+      } catch {
+        // Gone since the folder was read, like a lock file or a kit's work file.
+        continue;
+      }
+      if (since !== undefined && stat.mtimeMs < since - MTIME_SLACK_MS) continue;
+      files.push({ path: path.relative(folder, full), bytes: stat.size });
     }
-  };
-  if (existsSync(folder)) walk(folder);
+  }
   return files;
 }
 
@@ -48,8 +76,13 @@ export function readDocs(folder: string, names: string[] = []): JobDoc[] {
   const docs: JobDoc[] = [];
   for (const name of names) {
     const file = path.join(folder, name);
-    if (!existsSync(file)) continue;
-    const text = readFileSync(file, 'utf8');
+    let text;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch {
+      // Not there, or not a file.
+      continue;
+    }
     docs.push(text.length > MAX_DOC_CHARS
       ? { name, text: text.slice(0, MAX_DOC_CHARS), more: file }
       : { name, text });
@@ -104,7 +137,7 @@ export function viewJob(job: Job): JobView {
     // What the kit said at the end: its summary on stdout, or its last lines when it writes only to stderr.
     view.summary = job.stdout.trim() || tail(job.stderr, 12);
     if (spec.folder) {
-      view.files = listFiles(spec.folder);
+      view.files = listFiles(spec.folder, job.startedAt);
       view.docs = readDocs(spec.folder, spec.docs);
     }
   }
@@ -124,8 +157,6 @@ export interface LocalBackendOptions {
    */
   confine?: boolean;
 }
-
-
 
 /** Runs kits on this machine, each job a process of its own, saving into baseDir. */
 export class LocalBackend implements KitBackend {
