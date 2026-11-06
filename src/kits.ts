@@ -69,8 +69,10 @@ export interface OutDefinition {
    * Folders in the folder given with `flag` that the kit deletes and makes again, like
    * brand, each with how to tell one a kit made. makersmcp does not start the kit when it
    * finds the kit would lose anything else there. It tells folders apart by what the disk
-   * says they are, so another letter case, a link or a mount does not hide one, but it
-   * looks only before the kit starts.
+   * says they are, so such a folder in another letter case, through a link or where a
+   * mount shows it again is still that folder. It checks only before the kit starts, and
+   * cannot tell a folder mounted from the same disk where it checks, like pages in brand
+   * or an out_dir in the kit given, from any other folder.
    */
   replaces?: Record<string, ReplacedFolder>;
 }
@@ -93,8 +95,9 @@ export interface ReplacedFolder {
    * file in it. When that is this folder by its path, the kit uses it where it is and
    * deletes nothing. Any other, it deletes this folder and copies that one in its place, so
    * a file that one holds too under the same name, byte for byte, comes back. This folder
-   * under another path, a folder in it and one around it are refused: the kit would delete
-   * the folder it copies, or copy a folder into itself.
+   * under another path, a folder in it, one around it and one whose marker is a link into
+   * it are refused: the kit would delete the folder it copies, or the marker it reads from
+   * the copy, or copy a folder into itself.
    */
   from?: string;
   /**
@@ -107,8 +110,8 @@ export interface ReplacedFolder {
    * The other names a kit writes in such a folder, as a regular expression matched in
    * full, like logo-\d+\.png. Making the folder again where it is, the kit replaces a file
    * with such a name even when the marker does not list it, and on a disk that ignores
-   * letter case one with such a name in other letters, so makersmcp matches these names,
-   * the marker and `files` in any letter case.
+   * letter case one with such a name in other letters or with a character the disk leaves
+   * out, so makersmcp matches these names, the marker and `files` that way too.
    */
   names?: string;
 }

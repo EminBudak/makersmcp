@@ -197,11 +197,13 @@ function nothingAt(name: string, param: ParamDefinition, full: string, text: str
  * makes again (out.replaces). Given a kit's folder in `from`, the kit deletes that folder
  * and copies the one given in its place, which therefore must be neither that folder under
  * another name, nor in it, nor around it; the folder then must hold nothing but a kit's own
- * files and files the copy brings back, and no file the call names. The same goes when it
- * deletes the folder to make its own, on every call or for the addresses in `addresses`.
+ * files and files the copy brings back, and no file the call names, nor the marker of the
+ * kit given, which the kit reads. The same goes when it deletes the folder to make its
+ * own, on every call or for the addresses in `addresses`.
  * For any other address the kit makes the folder again where it is, keeping what is not
- * a kit's, so only a file with a name it writes (`names`) in any letter case, or a link,
- * a file or another disk where it keeps a folder of its own files, stops it.
+ * a kit's, so only a file with a name it writes (`names`) in any letter case or with a
+ * character that does not show, or a link, a file or another disk where it keeps a folder
+ * of its own files, stops it.
  */
 function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<string, unknown>, files: string[]): void {
   for (const [name, kind] of Object.entries(tool.out?.replaces ?? {})) {
@@ -229,7 +231,9 @@ function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<st
         why = `${dir} is inside ${copied}, and a folder cannot be copied into itself`;
         then = `Give an out_dir outside ${copied}.`;
       } else {
-        why = namedInside(dir, files, deleted) ?? notAKitsOwn(dir, kind, { folder: copied, deleted });
+        // Given a folder, the kit reads its marker, which may lead into the folder it deletes first.
+        const read = isFolder(given) ? [path.join(given, kind.marker)] : [];
+        why = namedInside(dir, [...files, ...read], deleted) ?? notAKitsOwn(dir, kind, { folder: copied, deleted });
       }
     } else if (kind.addresses && !addressesOf(tool, values).some(address => inFull(kind.addresses!.pattern).test(address))) {
       if (kind.names === undefined) continue;
@@ -432,20 +436,27 @@ function kitMarker(dir: string, kind: ReplacedFolder): KitMarker {
   return { own: new Set([kind.marker, ...(kind.files ?? []), ...(kind.lists ?? []).flatMap(where => listedIn(marker, where))]) };
 }
 
+// The code points Unicode lets a name hold without showing them, like U+200B, the soft
+// hyphen or a variation selector. A Linux disk that ignores letter case leaves them out of
+// a name, all but the few Unicode added after its tables, and macOS's HFS+ some of them.
+const UNSEEN = /\p{Default_Ignorable_Code_Point}/gu;
+
 /**
  * A name the way a disk that ignores letter case compares it, as near as can be told:
- * its accents in one form, without the marks some disks leave out, in small letters.
+ * without the code points such disks leave out, its accents in one form, and in small
+ * letters as Unicode folds them, so ß, ẞ and ss are one, and the Kelvin sign is k. Where
+ * the disks differ it folds the most, since a name it takes for another only stops a tool.
  */
-function folded(name: string): string {
-  return name.normalize('NFC').replace(/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g, '').toUpperCase().toLowerCase();
+export function folded(name: string): string {
+  return name.replace(UNSEEN, '').normalize('NFD').toLowerCase().toUpperCase().toLowerCase().normalize('NFC');
 }
 
 /**
  * In a folder the kit makes again where it is: what of it the kit would replace or
  * delete that is not a kit's own, in words. The kit writes and deletes its files by name,
- * and on a disk that ignores letter case a name in other letters is the same file, so a
- * name counts in any letter case here, and only one written the way the kit writes it is
- * a kit's own. Where the kit keeps a folder of its files, like pages, a link, a file or
+ * and on a disk that ignores letter case a name in other letters, or with a character the
+ * disk leaves out, is the same file, so a name counts as folded() gives it here, and only
+ * one written the way the kit writes it is a kit's own. Where the kit keeps a folder of its files, like pages, a link, a file or
  * another disk mounted there would have it delete or write files elsewhere, and a folder
  * by that name in other letters holds none of its own. Nothing when the folder holds no
  * kit, which such a kit does not start in.

@@ -141,7 +141,7 @@ function outDirHelp(tool: ToolDefinition, baseDir: string | undefined): string {
     const when = kind.addresses
       ? ` ${[kind.from ? `when given ${kind.from}` : '', `for ${kind.addresses.about}`].filter(Boolean).join(', or ')}`
       : '';
-    help += ` The kit deletes the ${name}/ folder in it and makes it again${when}, so it does not start${when ? ' then' : ''} while that folder holds a file that would be lost.`;
+    help += ` The kit deletes the ${name}/ folder in it and makes it again${when}, so it does not start${when ? ' then' : ''} while that folder holds a file other than a kit's own that would be lost.`;
     if (kind.addresses && kind.names !== undefined) {
       help += ` Otherwise it makes the kit in ${name}/ again where it is, so it does not start while ${name}/ holds a file named like a kit's own, in any letter case, that its ${kind.marker} does not list.`;
     }

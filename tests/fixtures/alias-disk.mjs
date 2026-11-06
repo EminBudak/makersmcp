@@ -34,6 +34,9 @@ write('marketing/brand/team-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/
 write('pure/brand/brand.json', JSON.stringify(kit));
 write('site/brand/brand.json', JSON.stringify(kit));
 write('site/brand/Card.png', 'THE TEAM CARD');
+// The team's notes named BRAND.md with a zero width space in it, which such a disk leaves out.
+write('unseen/brand/brand.json', JSON.stringify(kit));
+write('unseen/brand/BRAND\u200b.md', '# The team notes\n');
 
 // Every file below a folder with what it holds, to tell whether a call lost any.
 const snapshot = folder => {
@@ -67,6 +70,7 @@ await plan('kit given in other letters', { brand: 'marketing/brand', out_dir: 'M
 await plan('kit with only its own files, as its brand.json in other letters', { brand: 'PURE/BRAND/brand.json', out_dir: 'pure' }, 'pure/brand');
 await plan('kit given the way out_dir is', { brand: 'Marketing/brand', out_dir: 'Marketing' }, 'marketing/brand');
 await plan('website, the team card named like the kit card', { out_dir: 'site', brand: undefined }, 'site/brand');
+await plan('website, the team notes named like BRAND.md but for a character that does not show', { out_dir: 'unseen', brand: undefined }, 'unseen/brand');
 if (bind) {
   mkdirSync(path.join(base, 'alias'));
   const mounted = spawnSync('mount', ['--bind', path.join(base, 'marketing'), path.join(base, 'alias')], { encoding: 'utf8' });

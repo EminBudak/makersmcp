@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
@@ -882,6 +883,28 @@ test('a tool refuses to copy a kit folder into a folder inside it, which deletes
   });
 });
 
+test('given a kit folder whose brand.json is a link into brand/, a tool refuses to delete brand/, from which the kit would read it', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { kitIn } = addBrandFolders(baseDir);
+    kitIn('pure/brand');
+    // The kit given holds only a link to the brand.json of the kit in brand/, as written by hand or by a relative path.
+    for (const [dir, target] of [['linked-kit', path.join(baseDir, 'pure', 'brand', 'brand.json')], ['relative-kit', path.join('..', 'pure', 'brand', 'brand.json')]]) {
+      mkdirSync(path.join(baseDir, dir));
+      symlinkSync(target, path.join(baseDir, dir, 'brand.json'));
+      assert.throws(
+        () => call({ brand: dir, out_dir: 'pure' }),
+        new RegExp(`: plan_launch_film replaces the brand folder in .*pure with a copy of ${literally(path.join(baseDir, dir))}, deleting what is there, and ${literally(path.join(baseDir, dir, 'brand.json'))} is inside it\\. Give another out_dir, or move those files first\\.$`),
+        dir,
+      );
+      assert.throws(() => call({ brand: `${dir}/brand.json`, out_dir: 'pure' }), /brand\.json is inside it\./, dir);
+    }
+    // A link to a kit's brand.json elsewhere stays where it leads once brand/ is gone.
+    mkdirSync(path.join(baseDir, 'kit-elsewhere'));
+    symlinkSync(path.join(baseDir, 'kit', 'brand.json'), path.join(baseDir, 'kit-elsewhere', 'brand.json'));
+    assert.ok(call({ brand: 'kit-elsewhere', out_dir: 'pure' }).args.includes('--brand'));
+  });
+});
+
 test('a copy brings back a file by its bytes, a hard link of it too, never by being the same file', () => {
   withBrandFolders(({ baseDir, call }) => {
     fs.cpSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'hardlinked', 'brand'), { recursive: true });
@@ -914,6 +937,73 @@ test('from a website, a file named like a kit\'s own in other letters stops the 
     kitIn('own/brand', { 'notes.md': 'ours', 'pages/roadmap.md': 'ours', 'drafts/logo-01.png': 'ours' });
     assert.ok(call({ out_dir: 'own' }).args.includes('--out'));
   });
+});
+
+test('from a website, a file named like a kit\'s own but for a character that does not show stops the tool, on any disk', () => {
+  withBrandFolders(({ baseDir, call }) => {
+    const { put, kitIn } = addBrandFolders(baseDir);
+    // Characters a Linux disk that ignores letter case leaves out of a name: the soft hyphen,
+    // the combining grapheme joiner, the zero width space, the word joiner and the invisible
+    // operators, variation selectors, a language tag and a musical format character.
+    const unseen = [0xad, 0x34f, 0x180e, 0x200b, 0x2060, 0x2061, 0x2064, 0xfe00, 0xfe0f, 0xe0001, 0xe0100, 0x1d173];
+    for (const point of unseen) {
+      const mark = String.fromCodePoint(point);
+      const dir = `unseen-${point.toString(16)}`;
+      kitIn(`${dir}/brand`, { [`car${mark}d.png`]: 'ours', [`BRAND${mark}.md`]: 'ours', [`pages/home${mark}.md`]: 'ours' });
+      assert.throws(
+        () => call({ out_dir: dir }),
+        new RegExp(`${dir}/brand holds BRAND${mark}\\.md, car${mark}d\\.png and pages/home${mark}\\.md, which its brand\\.json does not list\\. Give another out_dir`, 'u'),
+        point.toString(16),
+      );
+    }
+    // Letters folded the way Unicode folds them: the capital sharp s is ss, as the sharp s is.
+    put('sharp/brand/brand.json', JSON.stringify({ version: 1, logos: [{ file: 'glass.png' }] }));
+    put('sharp/brand/GLA\u1e9e.png');
+    assert.throws(() => call({ out_dir: 'sharp' }), /sharp\/brand holds GLA\u1e9e\.png, which its brand\.json does not list/u);
+  });
+});
+
+// Whether a folder is on a disk that ignores letter case, as macOS and Windows have by default.
+function ignoresCase(folder) {
+  writeFileSync(path.join(folder, 'case.txt'), '');
+  try {
+    return existsSync(path.join(folder, 'CASE.TXT'));
+  } finally {
+    rmSync(path.join(folder, 'case.txt'), { force: true });
+  }
+}
+
+test('a name a real disk that ignores letter case takes for another, makersmcp takes for it too', async t => {
+  const { folded } = await import('../dist/args.js');
+  const probe = path.join(fixtures, 'casefold-probe.mjs');
+  const folder = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-casefold-'));
+  try {
+    let run;
+    if (ignoresCase(folder)) {
+      run = spawnSync(process.execPath, [probe, folder], { encoding: 'utf8', timeout: 120_000 });
+    } else if (process.platform === 'linux') {
+      // A tmpfs that folds letter case, in a user and mount namespace of the test's own.
+      const script = 'mount -t tmpfs -o casefold,size=16m makersmcp "$1" && mkdir "$1/ci" && chattr +F "$1/ci" || exit 77\nexec "$2" "$3" "$1/ci"';
+      run = spawnSync('unshare', ['--user', '--map-root-user', '--mount', 'sh', '-c', script, 'sh', folder, process.execPath, probe], { encoding: 'utf8', timeout: 120_000 });
+      if (run.error || run.status === 77 || /^unshare:/m.test(run.stderr)) {
+        t.skip(`no such disk can be made here: ${(run.error?.message ?? run.stderr).trim().split('\n').pop()}`);
+        return;
+      }
+    } else {
+      t.skip('the temporary folder minds letter case, and no disk that ignores it can be made here');
+      return;
+    }
+    assert.equal(run.status, 0, run.stderr);
+    const { left, taken } = JSON.parse(run.stdout);
+    // The disk does fold: it takes A for a.
+    assert.ok(taken.some(([point, string]) => point === 0x41 && string === 'a'), run.stdout.slice(0, 400));
+    const missed = left.filter(point => folded(`car${String.fromCodePoint(point)}d.png`) !== folded('card.png'));
+    assert.deepEqual(missed.map(point => point.toString(16)), [], 'code points the disk leaves out of a name and makersmcp keeps');
+    const apart = taken.filter(([point, string]) => folded(`q${String.fromCodePoint(point)}q`) !== folded(`q${string}q`));
+    assert.deepEqual(apart.map(([point, string]) => `${point.toString(16)} ${string}`), [], 'code points the disk takes for a name and makersmcp does not');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 test('from a website, a link, a file or another disk where the kit keeps a folder of its own files stops the tool, in every such folder', () => {

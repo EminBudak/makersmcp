@@ -226,7 +226,7 @@ test('plan_launch_film never deletes a brand folder of the user\'s, and the tool
       assert.equal(entry.annotations.destructiveHint, true, name);
       const when = name === 'make_launch_stills' ? 'for an App Store page' : 'when given brand, or for an App Store page';
       assert.ok(entry.inputSchema.properties.out_dir.description.includes(
-        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds a file that would be lost.`
+        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds a file other than a kit's own that would be lost.`
         + ' Otherwise it makes the kit in brand/ again where it is, so it does not start while brand/ holds a file named like a kit\'s own, in any letter case, that its brand.json does not list.',
       ), name);
     }
@@ -333,6 +333,10 @@ test('plan_launch_film refuses a kit that is the brand/ folder by another path, 
     // A kit folder that holds a film's folder, with the brand/ copied from it before.
     write('big/brand.json', JSON.stringify(ACME_KIT));
     write('big/film/brand/brand.json', JSON.stringify(ACME_KIT));
+    // A kit with only its own files, and a kit folder whose brand.json is a link to that kit's.
+    write('pure/brand/brand.json', JSON.stringify(ACME_KIT));
+    mkdirSync(path.join(outDir, 'linked-kit'));
+    symlinkSync(path.join('..', 'pure', 'brand', 'brand.json'), path.join(outDir, 'linked-kit', 'brand.json'));
     const plan = (brand, out_dir) => client.callTool({
       name: 'plan_launch_film',
       arguments: { url: 'https://acme.com', brand, words: 'words.json', out_dir, wait_seconds: 60 },
@@ -355,6 +359,13 @@ test('plan_launch_film refuses a kit that is the brand/ folder by another path, 
     assert.equal(around.isError, true);
     assert.match(text(around), /not started[\s\S]*film\/brand is inside .*big, and a folder cannot be copied into itself\. Give an out_dir outside/);
     assert.deepEqual(files('big/film/brand'), ['brand.json']);
+
+    // launch-film would delete pure/brand and then read the kit's brand.json from a copy of a link to it.
+    const linked = await plan('linked-kit', 'pure');
+    assert.equal(linked.isError, true);
+    assert.match(text(linked), /not started[\s\S]*linked-kit\/brand\.json is inside it\. Give another out_dir/);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(outDir, 'pure', 'brand', 'brand.json'), 'utf8')), ACME_KIT);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(outDir, 'linked-kit', 'brand.json'), 'utf8')), ACME_KIT);
   });
 });
 
@@ -431,6 +442,7 @@ test('on a real disk that ignores letter case, and through a bind mount, a kit g
       'kit given in other letters': /is that same folder under another name/,
       'kit with only its own files, as its brand.json in other letters': /is that same folder under another name/,
       'website, the team card named like the kit card': /site\/brand holds Card\.png, which its brand\.json does not list/,
+      'website, the team notes named like BRAND.md but for a character that does not show': /unseen\/brand holds BRAND\u200b\.md, which its brand\.json does not list/,
       'kit given through a bind mount': /is that same folder under another name/,
       'out_dir through a bind mount': /is that same folder under another name/,
       'website, pages/ another disk': /mounted\/brand\/pages is another disk mounted there, so the kit would delete files named like its own on it/,
