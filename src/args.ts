@@ -1,7 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { InstalledKit, ToolDefinition } from './kits.js';
+import type { InstalledKit, ParamDefinition, ToolDefinition } from './kits.js';
 
 /** A tool call that cannot become a command, like a file that is not there. */
 export class ArgumentError extends Error {}
@@ -10,6 +10,15 @@ export interface BuiltCommand {
   args: string[];
   /** Where the kit writes, when it is known. */
   folder?: string;
+}
+
+export interface CommandContext {
+  /** What relative paths are read from, and where the folders go. */
+  baseDir: string;
+  /** The kits that are installed, for `uses`. */
+  installed: Map<string, InstalledKit>;
+  /** Refuse every file and folder outside baseDir, for a service that brings a job's inputs into it. */
+  confine?: boolean;
 }
 
 export function isUrl(value: string): boolean {
@@ -28,6 +37,11 @@ export function expandHome(value: string): string {
   return value;
 }
 
+/** The text a text_or_path parameter takes as it is; any other value is a file. */
+export function textPattern(param: ParamDefinition): RegExp {
+  return new RegExp(`^(?:${param.pattern ?? '(?!)'})$`);
+}
+
 /** The host part of a folder name, the way the kits name theirs: launch-film-linear.app. */
 export function hostOf(value: string): string | undefined {
   if (!isUrl(value)) return undefined;
@@ -38,6 +52,28 @@ export function hostOf(value: string): string | undefined {
   }
 }
 
+/** A path with its links resolved, as far up as it exists, so a link cannot lead out of a folder. */
+function realPath(file: string): string {
+  let head = file;
+  const rest: string[] = [];
+  while (!existsSync(head)) {
+    const parent = path.dirname(head);
+    if (parent === head) break;
+    rest.unshift(path.basename(head));
+    head = parent;
+  }
+  try {
+    return path.join(realpathSync(head), ...rest);
+  } catch {
+    return file;
+  }
+}
+
+function isInside(folder: string, file: string): boolean {
+  const relative = path.relative(realPath(folder), realPath(file));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
 /**
  * Turns a tool call into the kit's arguments: the positional ones from `args`,
  * then a flag for each parameter given, then the folder and the other kits the
@@ -46,15 +82,32 @@ export function hostOf(value: string): string | undefined {
 export function buildCommand(
   tool: ToolDefinition,
   input: Record<string, unknown>,
-  context: { baseDir: string; installed: Map<string, InstalledKit> },
+  context: CommandContext,
 ): BuiltCommand {
+  const { baseDir } = context;
+  const resolve = (name: string, value: string): string => {
+    const full = path.resolve(baseDir, expandHome(value));
+    if (context.confine && !isInside(baseDir, full)) {
+      throw new ArgumentError(`${name}: ${value} is outside ${baseDir}, the only folder this server reads from`);
+    }
+    return full;
+  };
+
   const values: Record<string, unknown> = {};
   for (const [name, param] of Object.entries(tool.params)) {
     let value = input[name];
     if (value === undefined || value === null || value === '') continue;
-    if (param.type === 'path' || (param.type === 'url_or_path' && !isUrl(String(value)))) {
-      value = path.resolve(context.baseDir, expandHome(String(value)));
-      if (!existsSync(value as string)) throw new ArgumentError(`${name}: there is nothing at ${value}`);
+    if (param.type === 'path' || param.type === 'url_or_path' || param.type === 'text_or_path') {
+      const text = String(value);
+      const kept = (param.type === 'url_or_path' && isUrl(text))
+        || (param.type === 'text_or_path' && textPattern(param).test(text));
+      if (!kept) {
+        if (param.type === 'text_or_path' && isUrl(text)) {
+          throw new ArgumentError(`${name}: the kit cannot read a link. Give the text itself, or a file. ${param.description}`);
+        }
+        value = resolve(name, text);
+        if (!existsSync(value as string)) throw new ArgumentError(nothingAt(name, param, value as string, text));
+      }
     }
     values[name] = value;
   }
@@ -82,13 +135,13 @@ export function buildCommand(
   let folder: string | undefined;
   if (tool.out) {
     const given = typeof input.out_dir === 'string' && input.out_dir ? input.out_dir : undefined;
-    const named = given !== undefined ? expandHome(given) : fill(tool.out.name, tool, values);
-    if (named !== undefined) {
-      folder = path.resolve(context.baseDir, named);
+    const named = fill(tool.out.name, tool, values);
+    if (given !== undefined || named !== undefined) {
+      folder = given !== undefined ? resolve('out_dir', given) : path.resolve(baseDir, named!);
       if (tool.out.flag) args.push(tool.out.flag, folder);
     } else if (tool.out.otherwise) {
       const other = fill(tool.out.otherwise, tool, values);
-      if (other !== undefined) folder = path.resolve(context.baseDir, other);
+      if (other !== undefined) folder = path.resolve(baseDir, other);
     }
   }
 
@@ -98,6 +151,13 @@ export function buildCommand(
   }
 
   return { args, folder };
+}
+
+function nothingAt(name: string, param: ParamDefinition, full: string, text: string): string {
+  if (param.type === 'text_or_path') {
+    return `${name}: there is nothing at ${full}, and "${text}" is not text the kit takes. ${param.description}`;
+  }
+  return `${name}: there is nothing at ${full}`;
 }
 
 /** Fills {host}, {dir:param}, {stem:param} and {param}, or gives undefined. */

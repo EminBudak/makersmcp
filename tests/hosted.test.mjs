@@ -5,7 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { NotStartedError, createMcpServer } from '../dist/server.js';
+import { NotStartedError, createMcpServer, loadKitDefinitions } from '../dist/server.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(here, 'fixtures');
@@ -14,7 +14,8 @@ const definitions = ['fakekit.json', 'otherkit.json']
 
 const EXPIRES = Date.UTC(2026, 10, 8, 12, 30) / 1000;
 
-// A backend like a hosted service's: it runs fakekit only and keeps its jobs in memory.
+// A backend like a hosted service's: it runs fakekit only, or every kit it is given,
+// and keeps its jobs in memory.
 class FakeHostedBackend {
   where = 'hosted';
   place = 'on example.com';
@@ -22,8 +23,12 @@ class FakeHostedBackend {
   jobs = new Map();
   closed = false;
 
+  constructor({ runs = ['fakekit'] } = {}) {
+    this.runs = runs;
+  }
+
   available(kits) {
-    return kits.map(definition => definition.kit === 'fakekit'
+    return kits.map(definition => this.runs === 'all' || this.runs.includes(definition.kit)
       ? { definition, version: '9.9.9' }
       : { definition, reason: 'not running on example.com right now' });
   }
@@ -77,9 +82,9 @@ class FakeHostedBackend {
   }
 }
 
-async function withHosted(callback) {
-  const backend = new FakeHostedBackend();
-  const server = createMcpServer({ definitions, backend });
+async function withHosted(callback, { kits = definitions, runs } = {}) {
+  const backend = new FakeHostedBackend({ runs });
+  const server = createMcpServer({ definitions: kits, backend });
   const client = new Client({ name: 'test-client', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -92,6 +97,9 @@ async function withHosted(callback) {
   }
   return backend;
 }
+
+// The kits in kits/, as a hosted service lists them.
+const withRealKits = callback => withHosted(callback, { kits: loadKitDefinitions(), runs: 'all' });
 
 const text = result => result.content.map(item => item.text).join('\n');
 
@@ -155,4 +163,49 @@ test('the core tools ask the hosted backend, and an unknown job says where to lo
   });
   // Closing the server tells the backend.
   assert.equal(backend.closed, true);
+});
+
+test('hosted, a kit param that takes text or a file refuses a path on the server', async () => {
+  await withRealKits(async (client, backend) => {
+    const refused = [
+      ['check_video', { film: 'job:job0/film.mp4', cuts: '/home/someone/.env.production' }],
+      ['check_video', { film: 'job:job0/film.mp4', cuts: '../cuts.json' }],
+      ['record_demo_video', { url: 'https://example.com', background: '/var/www/site/uploads/private.png' }],
+      ['record_demo_video', { url: 'https://example.com', background: 'poster.png' }],
+    ];
+    for (const [name, args] of refused) {
+      const result = await client.callTool({ name, arguments: args });
+      assert.equal(result.isError, true, `${name} ${JSON.stringify(args)}`);
+    }
+    assert.equal(backend.started.length, 0, 'no job started');
+
+    const taken = [
+      ['check_video', { film: 'job:job0/film.mp4', cuts: '3.2,7.5' }],
+      ['check_video', { film: 'job:job0/film.mp4', cuts: 'job:job0/cuts.json' }],
+      ['check_video', { film: 'job:job0/film.mp4', cuts: 'https://example.com/cuts.json' }],
+      ['record_demo_video', { url: 'https://example.com', background: '#0f172a, #1e293b' }],
+      ['record_demo_video', { url: 'https://example.com', background: 'https://example.com/backdrop.png' }],
+    ];
+    for (const [name, args] of taken) {
+      const result = await client.callTool({ name, arguments: { ...args, wait_seconds: 0 } });
+      assert.notEqual(result.isError, true, `${name} ${JSON.stringify(args)}: ${text(result)}`);
+    }
+    assert.equal(backend.started.length, taken.length);
+
+    const { tools } = await client.listTools();
+    const cuts = tools.find(entry => entry.name === 'check_video').inputSchema.properties.cuts;
+    assert.match(cuts.description, /For a file, give an https link to it, or job:<job_id>\/<path>/);
+  });
+});
+
+test('hosted, no kit param that names a file is plain text, so none skips the file rules', () => {
+  for (const kit of loadKitDefinitions()) {
+    for (const entry of kit.tools) {
+      for (const [name, param] of Object.entries(entry.params)) {
+        if (['string', 'list', 'repeat'].includes(param.type)) {
+          assert.doesNotMatch(param.description, /\bfiles?\b/i, `${entry.name}.${name} is ${param.type} but takes a file`);
+        }
+      }
+    }
+  }
 });

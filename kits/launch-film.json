@@ -83,7 +83,7 @@
         "seconds": { "type": "string", "flag": "--seconds", "description": "The length it should have: 30 (give or take half a second) or a range like 28-32." },
         "lufs": { "type": "number", "flag": "--lufs", "min": -69, "max": -1, "description": "The integrated loudness it should have, like -14 (give or take 1 LU)." },
         "cues": { "type": "path", "flag": "--cues", "description": "The music's cues.json (from fit_music), to check the cuts land on the beat." },
-        "cuts": { "type": "string", "flag": "--cuts", "description": "The cuts in seconds, like 3.2,7.5, or a JSON file, when the video has no timeline from launch-film." },
+        "cuts": { "type": "text_or_path", "flag": "--cuts", "pattern": "\\s*\\d+(?:\\.\\d+)?(?:\\s*,\\s*\\d+(?:\\.\\d+)?)*\\s*", "description": "The cuts in seconds, like 3.2,7.5, or a JSON file, when the video has no timeline from launch-film." },
         "allow": { "type": "string", "flag": "--allow", "description": "Stretches meant to hold still, black or silent, in seconds, like 27-30,0-0.5." }
       },
       "docs": ["CHECK.md"]

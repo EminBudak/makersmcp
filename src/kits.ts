@@ -14,6 +14,7 @@ export type ParamType =
   | 'url'
   | 'url_or_path'
   | 'path'
+  | 'text_or_path'
   | 'string'
   | 'integer'
   | 'number'
@@ -32,6 +33,11 @@ export interface ParamDefinition {
   when?: boolean;
   /** Allowed values for enum, and for each item of a list. */
   values?: string[];
+  /**
+   * For text_or_path: a regular expression for the text the kit takes, like a list of
+   * seconds. A value it does not match in full is a file.
+   */
+  pattern?: string;
   min?: number;
   max?: number;
 }
@@ -92,7 +98,7 @@ export interface MissingKit {
 }
 
 const PARAM_TYPES = new Set<ParamType>([
-  'url', 'url_or_path', 'path', 'string', 'integer', 'number', 'boolean', 'enum', 'list', 'repeat',
+  'url', 'url_or_path', 'path', 'text_or_path', 'string', 'integer', 'number', 'boolean', 'enum', 'list', 'repeat',
 ]);
 const NAME = /^[a-z][a-z0-9_]*$/;
 const RESERVED_PARAMS = new Set(['out_dir', 'wait_seconds']);
@@ -131,6 +137,16 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
       if (!PARAM_TYPES.has(param.type)) fail(`${tool.name}.${name}: unknown type "${param.type}"`);
       if (param.type === 'enum' && !param.values?.length) fail(`${tool.name}.${name}: an enum needs values`);
       if (param.flag !== undefined && !/^--?[a-z]/.test(param.flag)) fail(`${tool.name}.${name}: bad flag "${param.flag}"`);
+      if (param.type === 'text_or_path') {
+        if (!param.pattern) fail(`${tool.name}.${name}: text_or_path needs the pattern of its text`);
+        try {
+          new RegExp(param.pattern!);
+        } catch {
+          fail(`${tool.name}.${name}: the pattern is not a regular expression`);
+        }
+      } else if (param.pattern !== undefined) {
+        fail(`${tool.name}.${name}: only text_or_path takes a pattern`);
+      }
       if ((param.min !== undefined || param.max !== undefined) && param.type !== 'integer' && param.type !== 'number') {
         fail(`${tool.name}.${name}: only numbers take min and max`);
       }

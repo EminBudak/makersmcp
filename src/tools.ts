@@ -24,8 +24,10 @@ const waitSeconds = z.number().int().min(0).max(600).default(DEFAULT_WAIT)
 
 // A hosted kit cannot read the agent's disk: a file comes as a link, or as a file an
 // earlier job of the same user saved.
-const HOSTED_FILE = /^(https?:\/\/\S+|job:[^\s/]+\/\S+)$/i;
+const HOSTED_FILE_SOURCE = '(https?:\\/\\/\\S+|job:[^\\s/]+\\/\\S+)';
+const HOSTED_FILE = new RegExp(`^${HOSTED_FILE_SOURCE}$`, 'i');
 const HOSTED_FILE_HELP = ' Give an https link to the file, or job:<job_id>/<path> for a file an earlier job saved.';
+const HOSTED_TEXT_OR_FILE_HELP = ' For a file, give an https link to it, or job:<job_id>/<path> for a file an earlier job saved.';
 
 function paramSchema(param: ParamDefinition, where: KitBackend['where']): z.ZodType {
   let schema: z.ZodType;
@@ -39,6 +41,18 @@ function paramSchema(param: ParamDefinition, where: KitBackend['where']): z.ZodT
       if (where === 'hosted') {
         schema = z.string().regex(HOSTED_FILE, 'an https link, or job:<job_id>/<path>');
         description += HOSTED_FILE_HELP;
+      } else {
+        schema = z.string().min(1);
+      }
+      break;
+    case 'text_or_path':
+      if (where === 'hosted') {
+        // The text as the kit takes it, or a file the service brings in. Never a path on its disk.
+        schema = z.string().regex(
+          new RegExp(`^(?:${param.pattern})$|^${HOSTED_FILE_SOURCE}$`, 'i'),
+          'the text itself, an https link, or job:<job_id>/<path>',
+        );
+        description += HOSTED_TEXT_OR_FILE_HELP;
       } else {
         schema = z.string().min(1);
       }

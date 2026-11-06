@@ -116,7 +116,16 @@ export interface LocalBackendOptions {
   baseDir: string;
   /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }. */
   kitPaths?: Record<string, string>;
+  /** The environment kits run with. Default: this process's. A service can keep its own secrets from them. */
+  env?: NodeJS.ProcessEnv;
+  /**
+   * Refuse every file and folder outside baseDir, like an out_dir or a file elsewhere.
+   * For a service that brings each job's inputs into the job's own baseDir.
+   */
+  confine?: boolean;
 }
+
+
 
 /** Runs kits on this machine, each job a process of its own, saving into baseDir. */
 export class LocalBackend implements KitBackend {
@@ -125,12 +134,16 @@ export class LocalBackend implements KitBackend {
   readonly baseDir: string;
   readonly jobs = new JobManager();
   private readonly kitPaths?: Record<string, string>;
+  private readonly env?: NodeJS.ProcessEnv;
+  private readonly confine: boolean;
   private kits: Array<InstalledKit | MissingKit> = [];
   private readonly installed = new Map<string, InstalledKit>();
 
   constructor(options: LocalBackendOptions) {
     this.baseDir = path.resolve(expandHome(options.baseDir));
     this.kitPaths = options.kitPaths;
+    this.env = options.env;
+    this.confine = options.confine === true;
   }
 
   available(definitions: KitDefinition[]): Array<AvailableKit | UnavailableKit> {
@@ -146,7 +159,7 @@ export class LocalBackend implements KitBackend {
 
     let command;
     try {
-      command = buildCommand(tool, input, { baseDir: this.baseDir, installed: this.installed });
+      command = buildCommand(tool, input, { baseDir: this.baseDir, installed: this.installed, confine: this.confine });
     } catch (error) {
       if (error instanceof ArgumentError) throw new NotStartedError(error.message);
       throw error;
@@ -174,6 +187,7 @@ export class LocalBackend implements KitBackend {
         docs: tool.docs,
         check: tool.check,
         report: tool.report,
+        env: this.env,
       }));
     } catch (error) {
       if (error instanceof FolderBusyError) {

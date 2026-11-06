@@ -19,6 +19,8 @@ export interface JobSpec {
   check?: boolean;
   /** For a check: what it writes once it has run, "stdout" or a file in the folder (ToolDefinition.report). */
   report?: string;
+  /** The kit's environment. Default: this process's. */
+  env?: NodeJS.ProcessEnv;
 }
 
 const STDOUT_LIMIT = 256 * 1024;
@@ -93,7 +95,7 @@ export class Job extends EventEmitter {
     try {
       this.child = spawn(process.execPath, [SUPERVISOR, spec.script, ...spec.args], {
         cwd: spec.cwd,
-        env: process.env,
+        env: spec.env ?? process.env,
         // stdin stays open and unused: it closes when this process ends, however it ends,
         // and the supervisor then stops the kit.
         stdio: ['pipe', 'pipe', 'pipe'],

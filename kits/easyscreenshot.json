@@ -39,7 +39,7 @@
         "pages": { "type": "integer", "flag": "--pages", "min": 1, "max": 8, "description": "Pages in the tour, the home page included (default 4)." },
         "page": { "type": "repeat", "flag": "--page", "description": "Pages to take in the tour, like /pricing." },
         "zoom": { "type": "number", "flag": "--zoom", "min": 1, "max": 2.5, "description": "How far a click zooms in, 1 to 2.5 (default 1.5). 1 means no zoom." },
-        "background": { "type": "string", "flag": "--background", "description": "Behind the window: a colour, two colours for a gradient, or a picture file." },
+        "background": { "type": "text_or_path", "flag": "--background", "pattern": "\\s*(?:#[0-9a-fA-F]{3,8}|(?:[rR][gG][bB][aA]?|[hH][sS][lL][aA]?)\\([\\d\\s.,%/+-]+\\)|[a-zA-Z]{3,30})(?:\\s*,\\s*(?:#[0-9a-fA-F]{3,8}|(?:[rR][gG][bB][aA]?|[hH][sS][lL][aA]?)\\([\\d\\s.,%/+-]+\\)|[a-zA-Z]{3,30})){0,2}\\s*", "description": "Behind the window: a colour like #0f172a, two or three colours for a gradient, or a picture file." },
         "frame": { "type": "boolean", "flag": "--no-frame", "when": false, "description": "Set to false for the page alone, filling the video." },
         "fps": { "type": "integer", "flag": "--fps", "min": 24, "max": 60, "description": "Frames a second (default 30)." },
         "theme": { "type": "enum", "flag": "--theme", "values": ["light", "dark"], "description": "The site's light or dark look (default light)." },

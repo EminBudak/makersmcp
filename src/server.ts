@@ -23,6 +23,7 @@ export type {
 export { JobManager, Job, FolderBusyError } from './jobs.js';
 export type { JobSpec } from './jobs.js';
 export { ArgumentError, buildCommand, expandHome } from './args.js';
+export type { BuiltCommand, CommandContext } from './args.js';
 export { LocalBackend, failureText, listFiles, readDocs, viewJob } from './local-backend.js';
 export type { LocalBackendOptions } from './local-backend.js';
 export { NotStartedError, isAvailable } from './backend.js';

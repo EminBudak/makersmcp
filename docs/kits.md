@@ -41,6 +41,7 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
 - `args`: the kit's positional arguments, like `["demo", "{url}"]`. `{param}` is that parameter's value.
 - `params`: each one has a `type`, a `description`, and a place in `args` or a `flag`. A parameter in `args` must be `required`.
   - `url` is an http or https address. `path` is a file or folder; a relative one is read from the output folder, and it must exist. `url_or_path` is either.
+  - `text_or_path` is text the kit takes as it is, or a file, like the cuts of a video as `3.2,7.5` or a JSON file. Its `pattern` is a regular expression for the text, matched in full; any other value is a file, read like a `path`. A parameter that takes a file in any form is never a plain `string`: on a hosted server only the file types are brought in as links, and a `string` would reach the kit as a path on the server.
   - `string`, `integer` and `number`; `min` and `max` bound the numbers. Every number needs both, set to what the kit itself accepts: `npm test` tries each bound with the kit.
   - `boolean` passes its flag when it is true, or with `"when": false` when it is false, for flags like `--no-music`.
   - `enum` takes one of its `values`. `list` takes several, joined with commas into one flag. `repeat` passes the flag once for each item.

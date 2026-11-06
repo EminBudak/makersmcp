@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -234,6 +234,7 @@ test('{stem:...} and {dir:...} fill folder names from files', () => {
   assert.deepEqual(command.args, [path.join(baseDir, 'fake.js'), '--out', path.join(baseDir, 'musicfit-fake')]);
 });
 
+const tool = name => loadKitDefinitions().flatMap(kit => kit.tools).find(entry => entry.name === name);
 const alive = pid => {
   try {
     process.kill(pid, 0);
@@ -373,5 +374,53 @@ test('closing the server stops a running kit and the processes it started', asyn
     assert.ok(await until(() => !alive(pids.kit) && !alive(pids.browser)), 'the kit and its browser are gone');
   } finally {
     for (const pid of Object.values(pids)) if (alive(pid)) process.kill(pid, 'SIGKILL');
+  }
+});
+
+test('a text_or_path parameter passes its text as it is and a file as a path', () => {
+  const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  try {
+    writeFileSync(path.join(baseDir, 'cuts.json'), '[3.2]');
+    writeFileSync(path.join(baseDir, 'film.mp4'), 'x');
+    writeFileSync(path.join(baseDir, 'poster.png'), 'x');
+    const context = { baseDir, installed: new Map() };
+    const check = tool('check_video');
+    const cuts = value => buildCommand(check, { film: 'film.mp4', cuts: value }, context).args;
+    assert.deepEqual(cuts('3.2, 7.5').slice(2, 4), ['--cuts', '3.2, 7.5']);
+    assert.deepEqual(cuts('cuts.json').slice(2, 4), ['--cuts', path.join(baseDir, 'cuts.json')]);
+    assert.throws(() => cuts('nope.json'), /cuts: there is nothing at .*nope\.json, and "nope\.json" is not text the kit takes/);
+    assert.throws(() => cuts('https://example.com/cuts.json'), /cuts: the kit cannot read a link/);
+
+    const demo = tool('record_demo_video');
+    const background = value => buildCommand(demo, { url: 'https://example.com', background: value }, context).args;
+    for (const colours of ['#0f172a', 'red, blue', 'rgb(1, 2, 3), #fff', 'HSL(200 50% 40%)', ' #111 , #222 , #333 ']) {
+      assert.deepEqual(background(colours).slice(2, 4), ['--background', colours], colours);
+    }
+    assert.deepEqual(background('poster.png').slice(2, 4), ['--background', path.join(baseDir, 'poster.png')]);
+    assert.throws(() => background('/var/www/nope.png'), /background: there is nothing at \/var\/www\/nope\.png/);
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('a confined backend reads no file and writes no folder outside its own', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  try {
+    const baseDir = path.join(root, 'job');
+    mkdirSync(path.join(baseDir, 'in'), { recursive: true });
+    writeFileSync(path.join(baseDir, 'in', 'film.mp4'), 'x');
+    writeFileSync(path.join(root, 'secret.env'), 'DB_PASSWORD=x');
+    symlinkSync(path.join(root, 'secret.env'), path.join(baseDir, 'in', 'cuts.json'));
+    const context = { baseDir, installed: new Map(), confine: true };
+    const check = tool('check_video');
+    assert.deepEqual(buildCommand(check, { film: 'in/film.mp4' }, context).args.slice(0, 2), ['check', path.join(baseDir, 'in', 'film.mp4')]);
+    assert.throws(() => buildCommand(check, { film: 'in/film.mp4', cuts: '../secret.env' }, context), /cuts: \.\.\/secret\.env is outside/);
+    assert.throws(() => buildCommand(check, { film: 'in/film.mp4', cuts: path.join(root, 'secret.env') }, context), /is outside/);
+    assert.throws(() => buildCommand(check, { film: 'in/film.mp4', cuts: 'in/cuts.json' }, context), /is outside/);
+    assert.throws(() => buildCommand(check, { film: 'in/film.mp4', out_dir: '/tmp/elsewhere' }, context), /out_dir: \/tmp\/elsewhere is outside/);
+    // Without confine, the same call reads the file where it is.
+    assert.ok(buildCommand(check, { film: 'in/film.mp4', cuts: '../secret.env' }, { baseDir, installed: new Map() }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
