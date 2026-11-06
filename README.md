@@ -50,7 +50,7 @@ Add this to `claude_desktop_config.json`, then quit Claude Desktop fully and ope
 }
 ```
 
-Claude Desktop starts servers outside any project, so the files go to `~/makersmcp`. For another folder, add `"env": { "MAKERSMCP_OUT": "<folder>" }` to the entry.
+Claude Desktop starts servers outside any project, so the files go to `~/makersmcp`, which makersmcp makes with the first job. For another folder, add `"env": { "MAKERSMCP_OUT": "<folder>" }` to the entry, like `"~/Documents/makersmcp"`: a leading `~` is your home folder.
 
 ### Cursor
 
@@ -143,7 +143,7 @@ In a client's settings, the same goes at the end of `args`, like `["-y", "makers
 
 ## Where the files go
 
-Every tool saves its files in a folder and returns the folder, the files in it and the kit's own notes, like BRAND.md. The folders go where makersmcp starts, which is your project for a coding agent, or `~/makersmcp` when it can't write there. Choose another place with `--out <dir>` or `MAKERSMCP_OUT`, or give a tool its own `out_dir`.
+Every tool saves its files in a folder and returns the folder, the files in it and the kit's own notes, like BRAND.md. The folders go where makersmcp starts, which is your project for a coding agent, or `~/makersmcp` when it can't write there; a folder that is not there yet is made with the first job. Choose another place with `--out <dir>` or `MAKERSMCP_OUT`, or give a tool its own `out_dir`.
 
 A long job, like rendering a film, keeps going after the tool returns. The tool then gives back a `job_id`, and your agent calls `wait_for_job` with it until the job ends. `list_jobs` and `cancel_job` do what they say, and `check_setup` tells what is missing when a kit fails to start. When the client closes makersmcp, or makersmcp ends some other way, its jobs stop too, with the browsers and ffmpeg they started.
 
@@ -158,7 +158,7 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 | Option | Environment | What it does |
 | --- | --- | --- |
 | `--kits <list>` | `MAKERSMCP_KITS` | turns on only these kits, like `easybrandkit,launch-film`; leave it out or give `all` for every kit |
-| `--out <dir>` | `MAKERSMCP_OUT` | where the folders go |
+| `--out <dir>` | `MAKERSMCP_OUT` | where the folders go, made with the first job; `~` is your home folder |
 | `--kit-path <kit>=<dir>` | `MAKERSMCP_KIT_PATHS` | uses a kit's checkout instead of its package |
 | `--check` | | prints the kits, Chrome, ffmpeg and the folder, and exits |
 

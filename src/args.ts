@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { InstalledKit, ToolDefinition } from './kits.js';
 
@@ -13,6 +14,18 @@ export interface BuiltCommand {
 
 export function isUrl(value: string): boolean {
   return /^https?:\/\/\S+$/i.test(value);
+}
+
+/**
+ * A path with a leading ~ for the home folder, the way a shell reads it. Settings and
+ * tool arguments reach makersmcp without a shell, so nothing else expands it.
+ */
+export function expandHome(value: string): string {
+  if (value === '~') return os.homedir();
+  if (value.startsWith('~/') || (process.platform === 'win32' && value.startsWith('~\\'))) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
 }
 
 /** The host part of a folder name, the way the kits name theirs: launch-film-linear.app. */
@@ -40,7 +53,7 @@ export function buildCommand(
     let value = input[name];
     if (value === undefined || value === null || value === '') continue;
     if (param.type === 'path' || (param.type === 'url_or_path' && !isUrl(String(value)))) {
-      value = path.resolve(context.baseDir, String(value));
+      value = path.resolve(context.baseDir, expandHome(String(value)));
       if (!existsSync(value as string)) throw new ArgumentError(`${name}: there is nothing at ${value}`);
     }
     values[name] = value;
@@ -69,7 +82,7 @@ export function buildCommand(
   let folder: string | undefined;
   if (tool.out) {
     const given = typeof input.out_dir === 'string' && input.out_dir ? input.out_dir : undefined;
-    const named = given ?? fill(tool.out.name, tool, values);
+    const named = given !== undefined ? expandHome(given) : fill(tool.out.name, tool, values);
     if (named !== undefined) {
       folder = path.resolve(context.baseDir, named);
       if (tool.out.flag) args.push(tool.out.flag, folder);

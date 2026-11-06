@@ -13,7 +13,8 @@ Options:
                        (or MAKERSMCP_KITS); all, or leaving it out, turns on
                        every kit
   --out <dir>          where kits save (or MAKERSMCP_OUT; default: the folder
-                       makersmcp starts in, or ~/makersmcp)
+                       makersmcp starts in, or ~/makersmcp); made with the
+                       first job when it is not there
   --kit-path <k=dir>   use a kit's checkout instead of its package, like
                        musicfit=../musicfit (repeat it, or MAKERSMCP_KIT_PATHS
                        with commas)
@@ -66,7 +67,8 @@ for (const entry of [...list(process.env['MAKERSMCP_KIT_PATHS']), ...(parsed['ki
 
 const options: MakersMcpOptions = {
   kits: list(parsed.kits ?? process.env['MAKERSMCP_KITS']),
-  outDir: parsed.out ?? process.env['MAKERSMCP_OUT'],
+  // A leading ~ is the home folder: a client's JSON settings have no shell to expand it.
+  outDir: parsed.out ?? (process.env['MAKERSMCP_OUT'] || undefined),
   kitPaths,
 };
 

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export type JobStatus = 'running' | 'done' | 'failed' | 'canceled';
@@ -93,13 +94,16 @@ export class Job extends EventEmitter {
       this.stderr = (this.stderr + chunk).slice(-STDERR_LIMIT);
       this.noteLine(chunk);
     });
-    this.child.on('error', error => {
-      this.stderr += `${this.stderr ? '\n' : ''}${error.message}`;
+    this.child.on('error', (error: NodeJS.ErrnoException) => {
+      // spawn names the program when the folder it should start in is missing.
+      this.note(error.code === 'ENOENT' && !existsSync(spec.cwd)
+        ? `Cannot start the kit in ${spec.cwd}: that folder does not exist.`
+        : error.message);
       end('failed', null);
     });
     this.child.on('close', (code, signal) => {
       if (this.canceling) return end('canceled', code);
-      if (signal) this.stderr += `${this.stderr ? '\n' : ''}Stopped by ${signal}.`;
+      if (signal) this.note(`Stopped by ${signal}.`);
       const passed = code === 0 || (code === 1 && spec.check === true);
       end(passed ? 'done' : 'failed', code);
     });
@@ -134,6 +138,11 @@ export class Job extends EventEmitter {
     killTree(this.child, 'SIGTERM');
     const timer = setTimeout(() => killTree(this.child, 'SIGKILL'), killAfterMs);
     return this.finished.finally(() => clearTimeout(timer));
+  }
+
+  /** A line of makersmcp's own after what the kit said. */
+  private note(line: string): void {
+    this.stderr += `${this.stderr && !this.stderr.endsWith('\n') ? '\n' : ''}${line}\n`;
   }
 
   private noteLine(chunk: string): void {

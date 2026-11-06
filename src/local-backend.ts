@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { ArgumentError, buildCommand } from './args.js';
+import { ArgumentError, buildCommand, expandHome } from './args.js';
 import {
   NotStartedError,
   type AvailableKit,
@@ -90,7 +90,7 @@ export function viewJob(job: Job): JobView {
 }
 
 export interface LocalBackendOptions {
-  /** Where kits save, and what relative paths are read from. */
+  /** Where kits save, and what relative paths are read from. A leading ~ is the home folder. */
   baseDir: string;
   /** A kit's folder to use instead of its installed package, like { musicfit: '../musicfit' }. */
   kitPaths?: Record<string, string>;
@@ -107,7 +107,7 @@ export class LocalBackend implements KitBackend {
   private readonly installed = new Map<string, InstalledKit>();
 
   constructor(options: LocalBackendOptions) {
-    this.baseDir = path.resolve(options.baseDir);
+    this.baseDir = path.resolve(expandHome(options.baseDir));
     this.kitPaths = options.kitPaths;
   }
 
@@ -128,6 +128,16 @@ export class LocalBackend implements KitBackend {
     } catch (error) {
       if (error instanceof ArgumentError) throw new NotStartedError(error.message);
       throw error;
+    }
+
+    // Every kit runs in baseDir, and on a first run, like ~/makersmcp, it is not there yet.
+    try {
+      mkdirSync(this.baseDir, { recursive: true });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new NotStartedError(
+        `Cannot make ${this.baseDir}, the folder the kits save in: ${reason}. Set --out or MAKERSMCP_OUT to a folder you can write to.`,
+      );
     }
 
     try {

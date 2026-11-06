@@ -22,7 +22,7 @@ export type {
 } from './kits.js';
 export { JobManager, Job, FolderBusyError } from './jobs.js';
 export type { JobSpec } from './jobs.js';
-export { ArgumentError, buildCommand } from './args.js';
+export { ArgumentError, buildCommand, expandHome } from './args.js';
 export { LocalBackend, listFiles, readDocs, viewJob } from './local-backend.js';
 export type { LocalBackendOptions } from './local-backend.js';
 export { NotStartedError, isAvailable } from './backend.js';
@@ -79,16 +79,14 @@ function prepare(options: MakersMcpOptions): Prepared {
     throw new Error(`Unknown kit: ${unknown.join(', ')}. The kits are ${[...known].join(', ')}, or all.`);
   }
 
-  const local = options.backend
-    ? undefined
-    : new LocalBackend({ baseDir: options.outDir ?? defaultOutDir(), kitPaths: options.kitPaths });
-  const backend = options.backend ?? local!;
+  const backend = options.backend
+    ?? new LocalBackend({ baseDir: options.outDir ?? defaultOutDir(), kitPaths: options.kitPaths });
   const available = backend.available(definitions).filter(isAvailable);
   const wanted = all ? undefined : new Set(asked);
   const enabled = new Set(available.map(kit => kit.definition.kit).filter(kit => !wanted || wanted.has(kit)));
 
   return {
-    context: { version, backend, baseDir: local?.baseDir, enabled },
+    context: { version, backend, baseDir: backend instanceof LocalBackend ? backend.baseDir : undefined, enabled },
     available,
   };
 }

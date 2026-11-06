@@ -94,6 +94,29 @@ lifecycle('even when makersmcp is killed outright, its kits do not outlive it', 
   process.kill(server, 'SIGKILL');
 });
 
+test('started outside any project, as Claude Desktop does, the files go to ~/makersmcp, made on the first job', { skip: posix }, async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-home-'));
+  let client;
+  try {
+    ({ client } = await startServer({ cwd: '/', env: { HOME: home } }));
+    const folder = path.join(home, 'makersmcp');
+    const setup = text(await client.callTool({ name: 'check_setup', arguments: {} }));
+    assert.match(setup, new RegExp(`Files go to ${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} .*It does not exist yet; the first job makes it\\.`));
+    const result = await client.callTool({ name: 'make_brand_kit', arguments: { url: 'https://example.com' } });
+    assert.equal(result.structuredContent.status, 'done', text(result));
+    assert.ok(existsSync(path.join(folder, 'easybrandkit-example.com', 'REPORT.md')));
+    await client.close();
+
+    // A client's JSON settings have no shell to read ~.
+    ({ client } = await startServer({ cwd: '/', env: { HOME: home, MAKERSMCP_OUT: '~/films' } }));
+    const tilde = text(await client.callTool({ name: 'check_setup', arguments: {} }));
+    assert.match(tilde, new RegExp(`Files go to ${path.join(home, 'films').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `));
+  } finally {
+    await client?.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('a client that closes stdin right after its requests still gets the answers', async () => {
   const out = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-stdio-'));
   try {

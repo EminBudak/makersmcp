@@ -1,6 +1,7 @@
-import { accessSync, constants, existsSync } from 'node:fs';
+import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { expandHome } from './args.js';
 import { isInstalled, type InstalledKit, type MissingKit } from './kits.js';
 
 const CHROME_NAMES = [
@@ -59,7 +60,7 @@ export function findFfmpeg(): string | undefined {
  */
 export function defaultOutDir(): string {
   const given = process.env['MAKERSMCP_OUT'];
-  if (given) return path.resolve(given);
+  if (given) return path.resolve(expandHome(given));
   const cwd = process.cwd();
   try {
     if (path.parse(cwd).root !== cwd) {
@@ -72,6 +73,29 @@ export function defaultOutDir(): string {
   return path.join(os.homedir(), 'makersmcp');
 }
 
+function writable(dir: string): boolean {
+  try {
+    accessSync(dir, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the kits can save in a folder, in words, or nothing when they can. */
+export function folderProblem(dir: string): string | undefined {
+  const fix = 'Set --out or MAKERSMCP_OUT to a folder you can write to.';
+  if (existsSync(dir)) {
+    if (!statSync(dir).isDirectory()) return `It is a file, not a folder, so no kit can save there. ${fix}`;
+    return writable(dir) ? undefined : `It cannot be written to, so no kit can save there. ${fix}`;
+  }
+  let above = path.dirname(dir);
+  while (!existsSync(above) && path.dirname(above) !== above) above = path.dirname(above);
+  return existsSync(above) && statSync(above).isDirectory() && writable(above)
+    ? 'It does not exist yet; the first job makes it.'
+    : `It does not exist, and it cannot be made in ${above}. ${fix}`;
+}
+
 /** The setup in words: kits, their state, the browser, ffmpeg and the folder. */
 export function setupReport(options: {
   version: string;
@@ -81,10 +105,11 @@ export function setupReport(options: {
 }): string {
   const chrome = findChrome();
   const ffmpeg = findFfmpeg();
+  const problem = folderProblem(options.baseDir);
   const lines = [
     `## makersmcp ${options.version}`,
     '',
-    `Node ${process.versions.node}. Files go to ${options.baseDir} (set it with --out or MAKERSMCP_OUT).`,
+    `Node ${process.versions.node}. Files go to ${options.baseDir} (set it with --out or MAKERSMCP_OUT).${problem ? ` ${problem}` : ''}`,
     '',
     'Kits:',
   ];

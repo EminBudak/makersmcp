@@ -9,7 +9,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildCommand } from '../dist/args.js';
 import { DRAFT_2020_12 } from '../dist/schema-dialect.js';
-import { createMcpServer, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
+import { LocalBackend, createMcpServer, expandHome, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
+import { defaultOutDir } from '../dist/setup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(here, 'fixtures');
@@ -249,6 +250,59 @@ async function until(check, ms = 5000) {
   }
   return check();
 }
+
+test('a folder to save in that is not there yet is made by the first job', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  const outDir = path.join(root, 'not', 'yet');
+  try {
+    await withClient({ outDir }, async client => {
+      const setup = text(await client.callTool({ name: 'check_setup', arguments: {} }));
+      assert.match(setup, /It does not exist yet; the first job makes it\./);
+      const result = await client.callTool({ name: 'fake_make', arguments: { url: 'https://example.com' } });
+      assert.notEqual(result.isError, true, text(result));
+      assert.equal(result.structuredContent.status, 'done');
+      assert.ok(existsSync(path.join(outDir, 'fakekit-example.com', 'REPORT.md')));
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a folder that cannot be made is a clear error, not a missing node', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
+  writeFileSync(path.join(root, 'a-file'), 'not a folder');
+  const outDir = path.join(root, 'a-file', 'out');
+  try {
+    await withClient({ outDir }, async client => {
+      const setup = text(await client.callTool({ name: 'check_setup', arguments: {} }));
+      assert.match(setup, /It does not exist, and it cannot be made in .*a-file/);
+      const result = await client.callTool({ name: 'fake_make', arguments: { url: 'https://example.com' } });
+      assert.equal(result.isError, true);
+      assert.match(text(result), /not started\n\nCannot make .*out, the folder the kits save in: .*Set --out or MAKERSMCP_OUT/);
+      assert.doesNotMatch(text(result), /spawn .* ENOENT/);
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('~ is the home folder in the folder settings and in out_dir', () => {
+  assert.equal(expandHome('~'), os.homedir());
+  assert.equal(expandHome('~/films'), path.join(os.homedir(), 'films'));
+  assert.equal(expandHome('a/~/b'), 'a/~/b');
+  assert.equal(new LocalBackend({ baseDir: '~/makersmcp-not-made' }).baseDir, path.join(os.homedir(), 'makersmcp-not-made'));
+  assert.ok(!existsSync(path.join(os.homedir(), 'makersmcp-not-made')), 'nothing is made before a job');
+  const before = process.env.MAKERSMCP_OUT;
+  process.env.MAKERSMCP_OUT = '~/kits-out';
+  try {
+    assert.equal(defaultOutDir(), path.join(os.homedir(), 'kits-out'));
+  } finally {
+    if (before === undefined) delete process.env.MAKERSMCP_OUT;
+    else process.env.MAKERSMCP_OUT = before;
+  }
+  const command = buildCommand(definitions[0].tools[0], { url: 'https://example.com', out_dir: '~/brand' }, { baseDir: fixtures, installed: new Map() });
+  assert.equal(command.folder, path.join(os.homedir(), 'brand'));
+});
 
 test('closing the server stops a running kit and the processes it started', async () => {
   let pids;
