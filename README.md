@@ -145,7 +145,7 @@ In a client's settings, the same goes at the end of `args`, like `["-y", "makers
 
 Every tool saves its files in a folder and returns the folder, the files it saved there and the kit's own notes, like BRAND.md. The folders go where makersmcp starts, which is your project for a coding agent, or `~/makersmcp` when it can't write there; a folder that is not there yet is made with the first job. Choose another place with `--out <dir>` or `MAKERSMCP_OUT`, or give a tool its own `out_dir`.
 
-launch-film keeps the brand kit a film uses in a `brand/` folder next to film.json and replaces that folder each time it plans. Its tools tell the client they may replace files, and they do not start when the folder has a `brand/` that is not a brand kit, so a `brand/` folder of yours is never deleted.
+launch-film keeps the brand kit a film uses in a `brand/` folder next to film.json, and deletes and makes that folder again each time it plans. Its tools tell the client they may replace files, and they do not start while that `brand/` holds anything but the files of a brand kit, so a `brand/` folder of yours, or a file you added to a kit, is never deleted.
 
 A long job, like rendering a film, keeps going after the tool returns. The tool then gives back a `job_id`, and your agent calls `wait_for_job` with it until the job ends. `list_jobs` and `cancel_job` do what they say, and `check_setup` tells what is missing when a kit fails to start. When the client closes makersmcp, or makersmcp ends some other way, its jobs stop too, with the browsers and ffmpeg they started.
 

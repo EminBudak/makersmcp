@@ -1,7 +1,10 @@
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { InstalledKit, ParamDefinition, ToolDefinition } from './kits.js';
+import type { InstalledKit, ParamDefinition, ReplacedFolder, ToolDefinition } from './kits.js';
+
+// Files a system leaves in any folder a person opens, which nobody misses.
+const SYSTEM_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 
 /** A tool call that cannot become a command, like a file that is not there. */
 export class ArgumentError extends Error {}
@@ -151,7 +154,7 @@ export function buildCommand(
     } else if (given !== undefined || named !== undefined) {
       folder = given !== undefined ? resolve('out_dir', given) : path.resolve(baseDir, named!);
       if (tool.out.flag) {
-        refuseReplacing(tool, folder, files);
+        refuseReplacing(tool, folder, values, files);
         args.push(tool.out.flag, folder);
       }
     }
@@ -176,31 +179,125 @@ function nothingAt(name: string, param: ParamDefinition, full: string, text: str
 }
 
 /**
- * Refuses a call that would have the kit delete a folder in `folder` it replaces with
- * its own (out.replaces) while that folder holds files no kit made there, or a file the
- * call itself names. A folder the call names is used where it is, so it stays.
+ * Refuses a call that would have the kit delete a folder in `folder` that it replaces
+ * with its own (out.replaces) while that folder holds anything a kit did not put there,
+ * or a file the call names. The kit deletes the whole folder, so a file a person added
+ * to a kit's folder goes too. A folder the call gives in `from` is used where it is.
  */
-function refuseReplacing(tool: ToolDefinition, folder: string, files: string[]): void {
-  for (const [name, marker] of Object.entries(tool.out?.replaces ?? {})) {
+function refuseReplacing(tool: ToolDefinition, folder: string, values: Record<string, unknown>, files: string[]): void {
+  for (const [name, kind] of Object.entries(tool.out?.replaces ?? {})) {
     const dir = path.join(folder, name);
-    if (!existsSync(dir)) continue;
-    try {
-      if (statSync(dir).isDirectory() && readdirSync(dir).length === 0) continue;
-    } catch {
-      // Not readable: count it as full.
-    }
-    if (files.some(file => file === dir || file === path.join(dir, marker))) continue;
+    if (kind.from !== undefined && usedInPlace(values[kind.from], dir)) continue;
     const inside = files.find(file => isInside(dir, file));
-    const why = inside
-      ? `${inside} is inside it`
-      : !existsSync(path.join(dir, marker)) ? `${dir} already holds other files (no ${marker} in it)` : undefined;
+    const why = inside ? `${inside} is inside it` : notAKitsOwn(dir, kind);
     if (why) {
       throw new ArgumentError(
         `${tool.name} replaces the ${name} folder in ${folder} with its own, deleting what is there, and ${why}. `
-        + `Give another out_dir, or move those files first.`,
+        + 'Give another out_dir, or move those files first.',
       );
     }
   }
+}
+
+/**
+ * Whether a folder the call gives, or a file in it, is `dir` itself. The kit then uses
+ * the folder where it is, the way it compares them: by path, links unresolved.
+ */
+function usedInPlace(value: unknown, dir: string): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    return (statSync(value).isDirectory() ? value : path.dirname(value)) === dir;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What in a folder the kit would delete is not a kit's own, in words. Nothing when the
+ * folder is not there, is empty, or holds only its marker, its files and what the
+ * marker lists.
+ */
+function notAKitsOwn(dir: string, kind: ReplacedFolder): string | undefined {
+  try {
+    if (!statSync(dir).isDirectory()) return `${dir} is a file, not a folder`;
+    if (readdirSync(dir).every(entry => SYSTEM_FILES.has(entry))) return undefined;
+  } catch (error) {
+    // Not there, or a link to nothing: there is nothing to lose.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    return `${dir} cannot be read`;
+  }
+
+  const markerFile = path.join(dir, kind.marker);
+  if (!existsSync(markerFile)) return `${dir} already holds other files (no ${kind.marker} in it)`;
+  let marker: unknown;
+  if (kind.version !== undefined || kind.lists?.length) {
+    try {
+      marker = JSON.parse(readFileSync(markerFile, 'utf8'));
+    } catch {
+      return `${markerFile} is not one a kit made`;
+    }
+    if (kind.version !== undefined && (marker as { version?: unknown } | null)?.version !== kind.version) {
+      return `${markerFile} is not one a kit made (no "version": ${kind.version} in it)`;
+    }
+  }
+
+  const own = new Set([kind.marker, ...(kind.files ?? []), ...(kind.lists ?? []).flatMap(where => listedIn(marker, where))]);
+  let others: string[];
+  try {
+    others = notOwn(dir, own);
+  } catch {
+    return `${dir} cannot be read`;
+  }
+  if (!others.length) return undefined;
+  return `${dir} holds ${namesInWords(others)}, which ${kind.lists?.length ? `its ${kind.marker} does not list` : 'no kit made'}`;
+}
+
+/**
+ * The names a marker lists at a place like logos.file, the file of each of its logos.
+ * By name only, as the kits read them, so a marker cannot name a file elsewhere.
+ */
+function listedIn(marker: unknown, where: string): string[] {
+  const flat = (values: unknown[]) => values.flatMap(value => (Array.isArray(value) ? value : [value]));
+  let found: unknown[] = [marker];
+  for (const key of where.split('.')) {
+    found = flat(found).map(value => (value !== null && typeof value === 'object' && Object.hasOwn(value, key)
+      ? (value as Record<string, unknown>)[key]
+      : undefined));
+  }
+  return flat(found)
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.split(/[\\/]/).pop() ?? '')
+    .filter(Boolean);
+}
+
+/**
+ * The entries of a folder that are not among its own files, like notes.md or drafts/,
+ * in name order. Links are entries like files: deleting one leaves what it points to.
+ */
+function notOwn(dir: string, own: Set<string>): string[] {
+  const found: string[] = [];
+  const walk = (relative: string) => {
+    const entries = readdirSync(path.join(dir, relative), { withFileTypes: true })
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (SYSTEM_FILES.has(entry.name)) continue;
+      const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if ([...own].some(file => file.startsWith(`${name}/`))) walk(name);
+        else found.push(`${name}/`);
+      } else if (!own.has(name)) {
+        found.push(name);
+      }
+    }
+  };
+  walk('');
+  return found;
+}
+
+/** A few names in words: a, a and b, or a, b, c and 2 more. */
+function namesInWords(names: string[]): string {
+  if (names.length > 4) return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]!;
 }
 
 /** Fills {host}, {dir:param}, {stem:param} and {param}, or gives undefined. */

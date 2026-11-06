@@ -120,9 +120,14 @@ function outDirHelp(tool: ToolDefinition, baseDir: string | undefined): string {
   let help = `Folder to save into, absolute or relative to ${baseDir}. Default: ${out.name}.`;
   if (out.otherwise) help += ` Given a file instead of an address, the kit saves in ${inWords(out.otherwise)} and takes no out_dir.`;
   if (out.replaces) {
-    const names = Object.keys(out.replaces).map(name => `${name}/`);
-    const folders = names.length > 1 ? `the ${names.join(' and ')} folders` : `the ${names[0]} folder`;
-    help += ` The kit replaces ${folders} in it with its own, so it does not start while one holds other files.`;
+    const kinds = Object.entries(out.replaces);
+    const names = kinds.map(([name]) => `${name}/`);
+    help += names.length > 1
+      ? ` The kit deletes the ${names.join(' and ')} folders in it and makes them again, so it does not start while one of them holds files no kit made.`
+      : ` The kit deletes the ${names[0]} folder in it and makes it again, so it does not start while that folder holds files no kit made.`;
+    for (const [name, kind] of kinds) {
+      if (kind.from) help += ` Give that ${name}/ folder as ${kind.from} to use it where it is.`;
+    }
   }
   return help;
 }

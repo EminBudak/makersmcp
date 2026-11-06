@@ -49,7 +49,11 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
   - `hostedDescription`: the parameter's description on a hosted server, in place of the usual words about links.
 - `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported.
   - `otherwise`: where the kit saves when `name` cannot be filled, like `{dir:source}` when the tool was given a file instead of an address. The kit picks that folder itself and takes no flag for it, so an `out_dir` other than that folder is refused.
-  - `replaces`: folders in the folder the kit is given that it deletes and makes again, each with the file that marks one a kit made, like `{ "brand": "brand.json" }`. makersmcp does not start the kit when such a folder holds anything else, or holds a file the call names. Mark the tool `destructive` too.
+  - `replaces`: folders in the folder the kit is given that it deletes and makes again, like `brand`, each with how to tell one a kit made. makersmcp does not start the kit when such a folder holds anything else, or holds a file the call names, since the kit deletes all of it. Mark the tool `destructive` too.
+    - `marker`: the file such a folder always holds, like `brand.json`. With `version`, the marker is JSON and its `version` is that number.
+    - `files`: the other files a kit writes there, like `BRAND.md` or `pages/home.md`.
+    - `lists`: where the marker names the rest of its files, like `logos.file` for the `file` of each of its `logos`, or `stores.assets.file`.
+    - `from`: the parameter that gives the kit such a folder to copy in, like `brand`. When the call gives this folder itself, or a file in it, the kit uses the folder where it is and deletes nothing.
 - `docs`: Markdown files in the folder to return with the result.
 - `check`: the kit exits with 1 when a check fails. That is a normal result, not an error.
 - `report`: for a check, what the kit writes once the check has run: `"stdout"` or a file in the folder, like `CHECK.md`. When the kit exits with 1 without writing it in this run, the check could not run, and the job failed. Every check needs one, since kits also exit with 1 on their own errors.

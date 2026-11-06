@@ -58,11 +58,31 @@ export interface OutDefinition {
    */
   otherwise?: string;
   /**
-   * Folders in the folder given with `flag` that the kit deletes and makes again, each
-   * with the file that marks one a kit made, like { "brand": "brand.json" }. makersmcp
-   * does not start the kit when such a folder holds anything else.
+   * Folders in the folder given with `flag` that the kit deletes and makes again, like
+   * brand, each with how to tell one a kit made. makersmcp does not start the kit when
+   * such a folder holds anything else, so nothing of the user's is deleted.
    */
-  replaces?: Record<string, string>;
+  replaces?: Record<string, ReplacedFolder>;
+}
+
+/** A folder a kit deletes and makes again, and the files a kit puts in one. */
+export interface ReplacedFolder {
+  /** The file such a folder always holds, like brand.json. */
+  marker: string;
+  /** The marker is JSON, and its "version" is this, like 1. */
+  version?: number;
+  /** The other files a kit writes there, like BRAND.md or pages/home.md. */
+  files?: string[];
+  /**
+   * Where the marker, read as JSON, names the rest of the files, by name: logos.file is
+   * the file of each of its logos, and stores.assets.file each file of each store's assets.
+   */
+  lists?: string[];
+  /**
+   * The parameter that gives the kit a folder like this to copy in, as the folder or a
+   * file in it. When that is this folder, the kit uses it where it is and deletes nothing.
+   */
+  from?: string;
 }
 
 export interface ToolDefinition {
@@ -120,6 +140,8 @@ const PARAM_TYPES = new Set<ParamType>([
 ]);
 const NAME = /^[a-z][a-z0-9_]*$/;
 const RESERVED_PARAMS = new Set(['out_dir', 'wait_seconds']);
+// A place in a marker file, like logos.file.
+const LISTED = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/;
 
 /** A path that stays inside the folder it is read from, like brand or stills/STILLS.md. */
 function staysInside(relative: string): boolean {
@@ -185,9 +207,19 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
         fail(`${tool.name}: report is "stdout" or a file in the tool's folder`);
       }
     }
-    for (const [folder, marker] of Object.entries(tool.out?.replaces ?? {})) {
+    for (const [folder, kind] of Object.entries(tool.out?.replaces ?? {})) {
+      const where = `${tool.name}: replaces.${folder}`;
       if (!tool.out?.flag) fail(`${tool.name}: replaces needs out.flag`);
-      if (!staysInside(folder) || !staysInside(marker)) fail(`${tool.name}: replaces names folders and files inside the tool's folder`);
+      if (!kind || typeof kind !== 'object' || typeof kind.marker !== 'string') fail(`${where} needs a marker, the file such a folder holds`);
+      if (kind.files !== undefined && !Array.isArray(kind.files)) fail(`${where}: files is a list`);
+      if (![folder, kind.marker, ...(kind.files ?? [])].every(name => typeof name === 'string' && staysInside(name))) {
+        fail(`${where}: it names folders and files inside the tool's folder`);
+      }
+      if (kind.version !== undefined && typeof kind.version !== 'number') fail(`${where}: version is a number`);
+      if (kind.lists !== undefined && !(Array.isArray(kind.lists) && kind.lists.every(entry => typeof entry === 'string' && LISTED.test(entry)))) {
+        fail(`${where}: lists are places in the marker, like logos.file`);
+      }
+      if (kind.from !== undefined && tool.params[kind.from]?.type !== 'path') fail(`${where}: from names a path parameter`);
     }
   }
 }
