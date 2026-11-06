@@ -16,7 +16,15 @@
         "flag": "--out",
         "name": "launch-film-{host}",
         "replaces": {
-          "brand": { "marker": "brand.json", "version": 1, "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"], "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"], "from": "brand" }
+          "brand": {
+            "marker": "brand.json",
+            "version": 1,
+            "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"],
+            "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"],
+            "names": "(?:logo|screen)-\\d+\\.png|logo-\\d+\\.svg|card\\.png|(?:appstore|googleplay|x|youtube|linkedin|threads|pinterest)-(?:icon|profile|shot-\\d+)\\.(?:png|jpg|webp)",
+            "from": "brand",
+            "addresses": { "about": "an App Store page", "pattern": "https?://(?:[^/?#]*@)?(?:[^/?#@]*\\.)?(?:apps|itunes)\\.apple\\.com(?::\\d+)?/(?:[^?#]*/)?id\\d{5}.*" }
+          }
         }
       },
       "destructive": true,
@@ -44,7 +52,15 @@
         "flag": "--out",
         "name": "launch-film-{host}",
         "replaces": {
-          "brand": { "marker": "brand.json", "version": 1, "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"], "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"], "from": "brand" }
+          "brand": {
+            "marker": "brand.json",
+            "version": 1,
+            "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"],
+            "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"],
+            "names": "(?:logo|screen)-\\d+\\.png|logo-\\d+\\.svg|card\\.png|(?:appstore|googleplay|x|youtube|linkedin|threads|pinterest)-(?:icon|profile|shot-\\d+)\\.(?:png|jpg|webp)",
+            "from": "brand",
+            "addresses": { "about": "an App Store page", "pattern": "https?://(?:[^/?#]*@)?(?:[^/?#@]*\\.)?(?:apps|itunes)\\.apple\\.com(?::\\d+)?/(?:[^?#]*/)?id\\d{5}.*" }
+          }
         }
       },
       "destructive": true,
@@ -83,7 +99,14 @@
         "name": "launch-film-{host}",
         "otherwise": "{dir:source}",
         "replaces": {
-          "brand": { "marker": "brand.json", "version": 1, "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"], "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"] }
+          "brand": {
+            "marker": "brand.json",
+            "version": 1,
+            "files": ["BRAND.md", "_brand.yml", "FACTS.md", "facts.json", "pages/home.md", "pages/pricing.md", "pages/customers.md", "pages/security.md", "pages/integrations.md", "pages/about.md"],
+            "lists": ["logos.file", "logos.svg", "screenshots.file", "card.file", "stores.assets.file"],
+            "names": "(?:logo|screen)-\\d+\\.png|logo-\\d+\\.svg|card\\.png|(?:appstore|googleplay|x|youtube|linkedin|threads|pinterest)-(?:icon|profile|shot-\\d+)\\.(?:png|jpg|webp)",
+            "addresses": { "about": "an App Store page", "pattern": "https?://(?:[^/?#]*@)?(?:[^/?#@]*\\.)?(?:apps|itunes)\\.apple\\.com(?::\\d+)?/(?:[^?#]*/)?id\\d{5}.*" }
+          }
         }
       },
       "destructive": true,

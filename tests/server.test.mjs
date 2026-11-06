@@ -517,9 +517,9 @@ test('a confined backend reads no file and writes no folder outside its own', ()
   }
 });
 
-test('a tool never replaces a folder that holds files no kit made, or a file added to a kit', () => {
-  const plan = tool('plan_launch_film');
-  const stills = tool('make_launch_stills');
+// The folders the brand/ guard is tried on: earlier kits, kits with a file added by hand,
+// folders of the user's, links, and kit folders to give as brand.
+function withBrandFolders(callback) {
   const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-test-'));
   try {
     const write = (file, body = 'x') => {
@@ -557,6 +557,10 @@ test('a tool never replaces a folder that holds files no kit made, or a file add
     write('drafts/brand/pages/drafts.md');
     writeKit('nested/brand');
     mkdirSync(path.join(baseDir, 'nested', 'brand', 'print'));
+    // Files of the user's with the names easybrandkit gives a logo and a profile picture.
+    writeKit('named/brand');
+    write('named/brand/logo-07.png');
+    write('named/brand/x-profile.jpg');
     write('a-file/brand', 'not a folder');
     write('site/brand/acme/brand.json', kit);
     writeKit('words/brand');
@@ -566,54 +570,143 @@ test('a tool never replaces a folder that holds files no kit made, or a file add
     mkdirSync(path.join(baseDir, 'linked'));
     symlinkSync(path.join(baseDir, 'elsewhere'), path.join(baseDir, 'linked', 'brand'));
     symlinkSync(path.join(baseDir, 'earlier', 'brand'), path.join(baseDir, 'kit-link'));
+    // brand/ as a link to an earlier kit: deleting it deletes the link, not the kit.
+    mkdirSync(path.join(baseDir, 'mirror'));
+    symlinkSync(path.join(baseDir, 'earlier', 'brand'), path.join(baseDir, 'mirror', 'brand'));
     mkdirSync(path.join(baseDir, 'empty', 'brand'), { recursive: true });
     write('junk/brand/.DS_Store');
     write('junk/brand/Thumbs.db');
-    const context = { baseDir, installed: new Map() };
-    const call = (input, which = plan) => buildCommand(which, { url: 'https://acme.com', ...input }, context);
+    // A kit folder that holds more than a kit, and brand/ folders launch-film copied it into:
+    // as it is, with the note changed since, and through a link, which the copy keeps a link.
+    write('kit-with-note/brand.json', kit);
+    write('kit-with-note/BRAND.md', '# Acme\n');
+    write('kit-with-note/notes.md', '# Kept with the kit\n');
+    write('kit-with-note/.gitkeep', '');
+    write('kit-with-note/fonts/brand.woff2', 'font');
+    fs.cpSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'copies', 'brand'), { recursive: true });
+    fs.cpSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'changed', 'brand'), { recursive: true });
+    write('changed/brand/notes.md', '# Changed in the film\n');
+    symlinkSync(path.join(baseDir, 'kit-with-note'), path.join(baseDir, 'kit-alias'));
+    mkdirSync(path.join(baseDir, 'linkcopy'));
+    fs.cpSync(path.join(baseDir, 'kit-alias'), path.join(baseDir, 'linkcopy', 'brand'), { recursive: true });
+    assert.ok(fs.lstatSync(path.join(baseDir, 'linkcopy', 'brand')).isSymbolicLink());
 
+    const context = { baseDir, installed: new Map() };
+    const call = (input, which = tool('plan_launch_film')) => buildCommand(which, { url: 'https://acme.com', ...input }, context);
+    callback({ baseDir, call });
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
+const STORE = 'https://apps.apple.com/us/app/acme/id1234567890';
+
+test('given a brand kit, a tool replaces brand/ only when that holds a kit\'s own files or what the copy brings back', () => {
+  withBrandFolders(({ baseDir, call }) => {
     const refused = [
-      [{ brand: 'kit', out_dir: 'project' }, /: plan_launch_film replaces the brand folder in .*project with its own, deleting what is there, and .*project\/brand already holds other files \(no brand\.json in it\)\. Give another out_dir, or move those files first\.$/],
-      [{ out_dir: 'project' }, /no brand\.json in it/],
+      [{ brand: 'kit', out_dir: 'project' }, /: plan_launch_film replaces the brand folder in .*project with a copy of .*kit, deleting what is there, and .*project\/brand already holds other files \(no brand\.json in it\)\. Give another out_dir, or move those files first\.$/],
       [{ brand: 'kit', out_dir: 'tokens' }, /and .*tokens\/brand\/brand\.json is not one a kit made \(no "version": 1 in it\)\./],
       [{ brand: 'kit', out_dir: 'broken' }, /and .*broken\/brand\/brand\.json is not one a kit made\./],
-      // An App Store page easybrandkit cannot read has launch-film delete brand/ too.
-      [{ url: 'https://apps.apple.com/us/app/acme/id1234567890', out_dir: 'tokens' }, /is not one a kit made/],
       // The kit deletes all of brand/, not only the files a kit put there.
-      [{ brand: 'kit', out_dir: 'notes' }, /and .*notes\/brand holds our-notes\.md, which its brand\.json does not list\./],
-      [{ out_dir: 'notes' }, /holds our-notes\.md, which/],
+      [{ brand: 'kit', out_dir: 'notes' }, /and .*notes\/brand holds our-notes\.md, which its brand\.json does not list and the copy would not bring back\./],
       [{ brand: 'kit', out_dir: 'drafts' }, /holds pages\/drafts\.md, which/],
       [{ brand: 'kit', out_dir: 'nested' }, /holds print\/, which/],
+      [{ brand: 'kit', out_dir: 'named' }, /holds logo-07\.png and x-profile\.jpg, which/],
       [{ brand: 'kit', out_dir: 'a-file' }, /a-file\/brand is a file, not a folder/],
       // The kit to use, or another file the call names, is inside the folder it would delete.
       [{ brand: 'site/brand/acme', out_dir: 'site' }, /and .*site\/brand\/acme is inside it/],
       [{ brand: 'kit', words: 'words/brand/words.json', out_dir: 'words' }, /words\/brand\/words\.json is inside it/],
       [{ brand: 'kit-link', out_dir: 'earlier' }, /kit-link is inside it/],
+      // A path through a brand/ that is a link leads into the copy once the link is gone.
+      [{ brand: 'kit', words: 'mirror/brand/BRAND.md', out_dir: 'mirror' }, /mirror\/brand\/BRAND\.md is inside it/],
       // Through a link, what it leads to counts.
       [{ brand: 'kit', out_dir: 'linked' }, /linked\/brand already holds other files/],
+      // A copy brings back only what the kit given holds, as it is.
+      [{ brand: 'kit-with-note', out_dir: 'changed' }, /changed\/brand holds notes\.md, which its brand\.json does not list and the copy would not bring back\./],
+      [{ brand: 'kit', out_dir: 'copies' }, /copies\/brand holds \.gitkeep, fonts\/ and notes\.md, which/],
+      [{ brand: 'kit', out_dir: 'linkcopy' }, /linkcopy\/brand holds \.gitkeep, fonts\/ and notes\.md, which/],
     ];
     for (const [input, why] of refused) assert.throws(() => call(input), why, JSON.stringify(input));
-    assert.throws(() => call({ source: 'https://acme.com', out_dir: 'notes' }, stills), /: make_launch_stills replaces the brand folder .*holds our-notes\.md/);
     assert.ok(existsSync(path.join(baseDir, 'notes', 'brand', 'our-notes.md')));
 
     const taken = [
       // An earlier kit with every file it lists, and what a file manager leaves.
       { brand: 'kit', out_dir: 'earlier' },
-      { out_dir: 'earlier' },
       { brand: 'kit', out_dir: 'empty' },
       { brand: 'kit', out_dir: 'junk' },
+      { brand: 'kit', out_dir: 'new' },
+      { brand: 'kit' },
+      // A link to an earlier kit, and a file of that kit named by its own path, which the link's deletion leaves.
+      { brand: 'kit', out_dir: 'mirror' },
+      { brand: 'kit', words: 'earlier/brand/BRAND.md', out_dir: 'mirror' },
       // The folder itself as the kit, or a file in it: the kit uses it where it is and deletes nothing.
       { brand: 'project/brand', out_dir: 'project' },
       { brand: 'tokens/brand/brand.json', out_dir: 'tokens' },
       { brand: 'notes/brand', words: 'notes/brand/our-notes.md', out_dir: 'notes' },
-      { brand: 'kit', out_dir: 'new' },
-      { brand: 'kit' },
+      // The same kit again: the copy brings back its note, its .gitkeep and its fonts.
+      { brand: 'kit-with-note', out_dir: 'copies' },
+      { brand: 'kit-with-note/brand.json', out_dir: 'copies' },
+      // Given through a link, the copy is that link, and the folder it leads to comes back too.
+      { brand: 'kit-alias', out_dir: 'linkcopy' },
+      { brand: 'kit-with-note', out_dir: 'linkcopy' },
+    ];
+    for (const input of taken) assert.ok(call(input).args.includes('--brand'), JSON.stringify(input));
+  });
+});
+
+test('for an App Store page a tool deletes brand/, so it refuses one that holds files no kit made', () => {
+  withBrandFolders(({ call }) => {
+    const stills = tool('make_launch_stills');
+    const refused = [
+      [{ url: STORE, out_dir: 'project' }, /: plan_launch_film replaces the brand folder in .*project with its own for an App Store page, deleting what is there, and .*project\/brand already holds other files \(no brand\.json in it\)\. Give another out_dir, or move those files first\.$/],
+      [{ url: STORE, out_dir: 'tokens' }, /tokens\/brand\/brand\.json is not one a kit made/],
+      [{ url: STORE, out_dir: 'notes' }, /notes\/brand holds our-notes\.md, which its brand\.json does not list\. Give/],
+      [{ url: STORE, out_dir: 'named' }, /named\/brand holds logo-07\.png and x-profile\.jpg, which its brand\.json does not list\./],
+      [{ url: STORE, words: 'words/brand/words.json', out_dir: 'words' }, /words\/brand\/words\.json is inside it/],
+      // The same page, written the ways launch-film still reads as one.
+      [{ url: 'HTTPS://APPS.APPLE.COM/us/app/acme/id1234567890?mt=8', out_dir: 'notes' }, /holds our-notes\.md/],
+      [{ url: 'https://itunes.apple.com/gb/app/acme/id123456789', out_dir: 'notes' }, /holds our-notes\.md/],
+      [{ url: 'https://apps.apple.com\\us\\app\\acme\\id1234567890', out_dir: 'notes' }, /holds our-notes\.md/],
+    ];
+    for (const [input, why] of refused) assert.throws(() => call(input), why, JSON.stringify(input));
+    assert.throws(() => call({ source: STORE, out_dir: 'notes' }, stills), /: make_launch_stills replaces the brand folder .* for an App Store page, deleting what is there, and .*holds our-notes\.md/);
+
+    for (const out_dir of ['earlier', 'empty', 'junk', 'new']) assert.ok(call({ url: STORE, out_dir }).args.includes('--out'), out_dir);
+    assert.ok(call({ source: STORE, out_dir: 'earlier' }, stills).args.includes('--out'));
+  });
+});
+
+test('for any other address a tool lets easybrandkit make brand/ again where it is, and refuses only a file with a name it writes', () => {
+  withBrandFolders(({ call }) => {
+    const stills = tool('make_launch_stills');
+    // easybrandkit replaces an earlier kit's own files and keeps the rest, and does not
+    // start in a folder that holds no kit, so nothing of the user's is lost.
+    const taken = [
+      { out_dir: 'notes' },
+      { out_dir: 'drafts' },
+      { out_dir: 'nested' },
+      { out_dir: 'earlier' },
+      { out_dir: 'project' },
+      { out_dir: 'tokens' },
+      { out_dir: 'broken' },
+      { out_dir: 'linked' },
+      { out_dir: 'copies' },
+      { words: 'words/brand/words.json', out_dir: 'words' },
+      // A Google Play page, and an App Store address that is not an app's page.
+      { url: 'https://play.google.com/store/apps/details?id=com.acme', out_dir: 'notes' },
+      { url: 'https://apps.apple.com/us/charts/iphone', out_dir: 'notes' },
+      { url: 'https://acme.com/apps.apple.com/id1234567890', out_dir: 'notes' },
     ];
     for (const input of taken) assert.ok(call(input).args.includes('--out'), JSON.stringify(input));
-    assert.ok(call({ source: 'https://acme.com', out_dir: 'earlier' }, stills).args.includes('--out'));
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
+    assert.ok(call({ source: 'https://acme.com', out_dir: 'notes' }, stills).args.includes('--out'));
+
+    // A file of the user's named like one easybrandkit writes would be replaced, or deleted when the run fails.
+    assert.throws(
+      () => call({ out_dir: 'named' }),
+      /: plan_launch_film makes the brand folder in .*named again, which replaces a kit's own files there and any file named like one, and .*named\/brand holds logo-07\.png and x-profile\.jpg, which its brand\.json does not list\. Give another out_dir, or move those files first\.$/,
+    );
+    assert.throws(() => call({ source: 'https://acme.com', out_dir: 'named' }, stills), /: make_launch_stills makes the brand folder in .*named again/);
+  });
 });
 
 test('a folder a tool replaces is described well enough to tell a kit\'s from the user\'s', () => {
@@ -631,5 +724,16 @@ test('a folder a tool replaces is described well enough to tell a kit\'s from th
   assert.throws(broken(out => { out.replaces.brand.lists = ['logos[0].file']; }), /lists are places in the marker/);
   assert.throws(broken(out => { out.replaces.brand.from = 'url'; }), /from names a path parameter/);
   assert.throws(broken(out => { delete out.flag; }), /replaces needs out\.flag/);
+  assert.throws(broken(out => { out.replaces.brand.addresses = 'https://apps\\.apple\\.com/.*'; }), /addresses are a pattern, a regular expression, and about/);
+  assert.throws(broken(out => { out.replaces.brand.addresses.pattern = '(apps'; }), /addresses are a pattern/);
+  assert.throws(broken(out => { delete out.replaces.brand.addresses.about; }), /addresses are a pattern/);
+  assert.throws(broken(out => { out.replaces.brand.names = 'logo-(\\d+'; }), /names is a regular expression/);
+  assert.throws(broken(out => { delete out.replaces.brand.addresses; }), /names need addresses/);
   broken(() => {})();
+
+  // Addresses need a parameter to give one.
+  const definition = structuredClone(launchFilm);
+  const plan = definition.tools.find(entry => entry.name === 'plan_launch_film');
+  plan.params.url.type = 'string';
+  assert.throws(() => validateKitDefinition(definition), /addresses need a parameter that takes an address/);
 });

@@ -18,6 +18,8 @@ export type {
   OutDefinition,
   ParamDefinition,
   ParamType,
+  ReplacedFolder,
+  ReplacedFor,
   ToolDefinition,
 } from './kits.js';
 export { JobManager, Job, FolderBusyError } from './jobs.js';

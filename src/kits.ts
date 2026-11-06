@@ -60,8 +60,9 @@ export interface OutDefinition {
   otherwise?: string;
   /**
    * Folders in the folder given with `flag` that the kit deletes and makes again, like
-   * brand, each with how to tell one a kit made. makersmcp does not start the kit when
-   * such a folder holds anything else, so nothing of the user's is deleted.
+   * brand, each with how to tell one a kit made. makersmcp does not start the kit when it
+   * would delete such a folder while that holds anything else, so nothing of the user's
+   * is deleted.
    */
   replaces?: Record<string, ReplacedFolder>;
 }
@@ -82,8 +83,30 @@ export interface ReplacedFolder {
   /**
    * The parameter that gives the kit a folder like this to copy in, as the folder or a
    * file in it. When that is this folder, the kit uses it where it is and deletes nothing.
+   * Any other, it deletes this folder and copies that one in its place, so a file that one
+   * holds too, byte for byte, comes back.
    */
   from?: string;
+  /**
+   * When the kit, not given `from`, deletes the folder only for some addresses, like an
+   * App Store page's: those addresses. For any other one it makes the folder again where
+   * it is, replacing a kit's own files and keeping the rest.
+   */
+  addresses?: ReplacedFor;
+  /**
+   * The other names a kit writes in such a folder, as a regular expression matched in
+   * full, like logo-\d+\.png. Making the folder again where it is, the kit replaces a file
+   * with such a name even when the marker does not list it.
+   */
+  names?: string;
+}
+
+/** The addresses a kit deletes a folder for. */
+export interface ReplacedFor {
+  /** A regular expression for them, matched in full against the address as given and as a URL parser writes it. */
+  pattern: string;
+  /** What they are, in words, like "an App Store page". */
+  about: string;
 }
 
 export interface ToolDefinition {
@@ -149,6 +172,16 @@ function staysInside(relative: string): boolean {
   return Boolean(relative) && !path.isAbsolute(relative) && !relative.split(/[\\/]/).includes('..');
 }
 
+function isPattern(value: unknown): boolean {
+  if (typeof value !== 'string' || !value) return false;
+  try {
+    new RegExp(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const KITS_DIR = fileURLToPath(new URL('../kits/', import.meta.url));
 
 /** Reads every kit definition in a folder, kits/ by default. */
@@ -182,11 +215,7 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
       if (param.hostedDescription !== undefined && !param.hostedDescription) fail(`${tool.name}.${name}: an empty hostedDescription`);
       if (param.type === 'text_or_path') {
         if (!param.pattern) fail(`${tool.name}.${name}: text_or_path needs the pattern of its text`);
-        try {
-          new RegExp(param.pattern!);
-        } catch {
-          fail(`${tool.name}.${name}: the pattern is not a regular expression`);
-        }
+        if (!isPattern(param.pattern)) fail(`${tool.name}.${name}: the pattern is not a regular expression`);
       } else if (param.pattern !== undefined) {
         fail(`${tool.name}.${name}: only text_or_path takes a pattern`);
       }
@@ -221,6 +250,20 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
         fail(`${where}: lists are places in the marker, like logos.file`);
       }
       if (kind.from !== undefined && tool.params[kind.from]?.type !== 'path') fail(`${where}: from names a path parameter`);
+      if (kind.addresses !== undefined) {
+        const { pattern, about } = (kind.addresses ?? {}) as Partial<ReplacedFor>;
+        if (!isPattern(pattern) || typeof about !== 'string' || !about) {
+          fail(`${where}: addresses are a pattern, a regular expression, and about, what they are in words`);
+        }
+        if (!Object.values(tool.params).some(param => param.type === 'url' || param.type === 'url_or_path')) {
+          fail(`${where}: addresses need a parameter that takes an address`);
+        }
+      }
+      if (kind.names !== undefined) {
+        if (!isPattern(kind.names)) fail(`${where}: names is a regular expression`);
+        // Only a kit that makes the folder again where it is, for the other addresses, replaces files by their names.
+        if (kind.addresses === undefined) fail(`${where}: names need addresses`);
+      }
     }
   }
 }

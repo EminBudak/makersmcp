@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildCommand, createMcpServer, loadKitDefinitions, resolveKit } from '../dist/server.js';
@@ -146,9 +147,9 @@ for (const kit of kits) {
   });
 }
 
-async function withLaunchFilm(callback) {
+async function withLaunchFilm(callback, options = {}) {
   const outDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-kits-'));
-  const server = createMcpServer({ kits: ['launch-film'], outDir });
+  const server = createMcpServer({ kits: ['launch-film'], outDir, ...options });
   const client = new Client({ name: 'test-client', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -223,15 +224,106 @@ test('plan_launch_film never deletes a brand folder of the user\'s, and the tool
     for (const name of ['make_launch_film', 'plan_launch_film', 'make_launch_stills']) {
       const entry = tools.find(item => item.name === name);
       assert.equal(entry.annotations.destructiveHint, true, name);
-      assert.match(entry.inputSchema.properties.out_dir.description, /The kit deletes the brand\/ folder in it and makes it again, so it does not start while that folder holds files no kit made\./);
+      const when = name === 'make_launch_stills' ? 'for an App Store page' : 'when given brand, or for an App Store page';
+      assert.ok(entry.inputSchema.properties.out_dir.description.includes(
+        ` The kit deletes the brand/ folder in it and makes it again ${when}, so it does not start then while that folder holds files no kit made.`,
+      ), name);
     }
     assert.match(tools.find(item => item.name === 'plan_launch_film').inputSchema.properties.out_dir.description, /Give that brand\/ folder as brand to use it where it is\.$/);
     assert.equal(tools.find(item => item.name === 'check_video').annotations.destructiveHint, false);
   });
 });
 
+// A brand kit and the page's words, so a plan reads nothing from the network.
+const ACME_KIT = { version: 1, name: 'Acme', url: 'https://acme.com', colors: [{ hex: '#112233', role: 'primary' }, { hex: '#ffcc00', role: 'button' }] };
+const ACME_WORDS = {
+  title: 'Acme widgets', description: 'Acme makes widgets for teams.',
+  headings: [{ level: 1, text: 'Widgets for every team' }, { level: 2, text: 'Fast setup' }, { level: 2, text: 'Clear pricing' }],
+  ctas: [], paragraphs: [], jsonld: [],
+};
+const fakeEasybrandkit = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-easybrandkit');
+
+test('plan_launch_film plans again from the kit folder it copied, with the files that folder holds', { skip: noLaunchFilm }, async () => {
+  await withLaunchFilm(async (client, outDir) => {
+    const write = (file, body) => {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), body);
+    };
+    // A kit kept with a note, a .gitkeep and its fonts: launch-film copies all of it into brand/.
+    write('kit-with-note/brand.json', JSON.stringify(ACME_KIT));
+    write('kit-with-note/notes.md', '# Kept with the kit\n');
+    write('kit-with-note/.gitkeep', '');
+    write('kit-with-note/fonts/brand.woff2', 'font');
+    write('other-kit/brand.json', JSON.stringify({ ...ACME_KIT, name: 'Other' }));
+    write('words.json', JSON.stringify(ACME_WORDS));
+    const plan = brand => client.callTool({
+      name: 'plan_launch_film',
+      arguments: { url: 'https://acme.com', brand, words: 'words.json', out_dir: 'film', wait_seconds: 60 },
+    });
+    const files = folder => readdirSync(path.join(outDir, folder), { recursive: true }).map(String).sort();
+    const kept = ['.gitkeep', 'brand.json', 'fonts', path.join('fonts', 'brand.woff2'), 'notes.md'];
+
+    for (const round of [1, 2]) {
+      const result = await plan('kit-with-note');
+      assert.equal(result.structuredContent?.status, 'done', `round ${round}: ${text(result)}`);
+      assert.deepEqual(files('film/brand'), kept);
+    }
+    // Another kit would not bring the note back.
+    const other = await plan('other-kit');
+    assert.equal(other.isError, true);
+    assert.match(text(other), /not started[\s\S]*film\/brand holds \.gitkeep, fonts\/ and notes\.md, which its brand\.json does not list and the copy would not bring back/);
+    assert.deepEqual(files('film/brand'), kept);
+    assert.deepEqual(files('kit-with-note'), kept);
+  });
+});
+
+test('plan_launch_film from a website has easybrandkit make brand/ again where it is, keeping a file of the user\'s', { skip: noLaunchFilm }, async () => {
+  await withLaunchFilm(async (client, outDir) => {
+    const write = (file, body) => {
+      mkdirSync(path.dirname(path.join(outDir, file)), { recursive: true });
+      writeFileSync(path.join(outDir, file), body);
+    };
+    write('words.json', JSON.stringify(ACME_WORDS));
+    write('project/brand/team-logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const plan = out_dir => client.callTool({
+      name: 'plan_launch_film',
+      arguments: { url: 'https://acme.com', words: 'words.json', out_dir, wait_seconds: 60 },
+    });
+    const files = folder => readdirSync(path.join(outDir, folder)).sort();
+
+    const first = await plan('site');
+    assert.equal(first.structuredContent?.status, 'done', text(first));
+    assert.deepEqual(files('site/brand'), ['BRAND.md', 'brand.json']);
+    // A note added to that kit stays: easybrandkit replaces only the kit's own files.
+    write('site/brand/our-notes.md', '# Our notes\n');
+    const again = await plan('site');
+    assert.equal(again.structuredContent?.status, 'done', text(again));
+    assert.deepEqual(files('site/brand'), ['BRAND.md', 'brand.json', 'our-notes.md']);
+    assert.equal(readFileSync(path.join(outDir, 'site', 'brand', 'our-notes.md'), 'utf8'), '# Our notes\n');
+
+    // A file named like the kit's own logos would be replaced, so the tool does not start.
+    write('site/brand/logo-03.png', 'ours');
+    const named = await plan('site');
+    assert.equal(named.isError, true);
+    assert.match(text(named), /not started[\s\S]*makes the brand folder in .*site again[\s\S]*holds logo-03\.png, which its brand\.json does not list/);
+    assert.equal(readFileSync(path.join(outDir, 'site', 'brand', 'logo-03.png'), 'utf8'), 'ours');
+
+    // A brand/ that holds no kit: easybrandkit does not start in it, and nothing goes.
+    const project = await plan('project');
+    assert.equal(project.isError, true);
+    assert.equal(project.structuredContent?.status, 'failed');
+    assert.match(text(project), /is not empty and holds no earlier brand kit/);
+    assert.deepEqual(files('project/brand'), ['team-logo.svg']);
+  }, { kitPaths: { easybrandkit: fakeEasybrandkit } });
+});
+
 test('what launch-film\'s tools take for a brand kit\'s own files, easybrandkit replaces as its own too', () => {
-  const { prepareDir } = createRequire(import.meta.url)('easybrandkit');
+  const require = createRequire(import.meta.url);
+  const { prepareDir } = require('easybrandkit');
+  // The names easybrandkit deletes after a run that failed, whether its kit listed them or not.
+  const cleanUp = /^const RUN_FILE = \/(.+)\/;$/m.exec(readFileSync(require.resolve('easybrandkit'), 'utf8'));
+  assert.ok(cleanUp, 'easybrandkit has no RUN_FILE any more: see which files it deletes after a failed run');
+  const runFile = new RegExp(cleanUp[1]);
   const tools = kits.find(kit => kit.kit === 'launch-film').tools.filter(tool => tool.out?.replaces?.brand);
   assert.deepEqual(tools.map(tool => tool.name), ['make_launch_film', 'plan_launch_film', 'make_launch_stills']);
   // A kit as easybrandkit writes one: a file at each place its brand.json lists them.
@@ -243,19 +335,32 @@ test('what launch-film\'s tools take for a brand kit\'s own files, easybrandkit 
     stores: [{ type: 'appstore', assets: [{ file: 'appstore-icon.png' }, { file: 'appstore-shot-01.jpg' }] }],
   };
   const listed = ['logo-01.png', 'logo-01.svg', 'screen-01.png', 'card.png', 'appstore-icon.png', 'appstore-shot-01.jpg'];
+  const names = [
+    ...listed, 'logo-1.png', 'logo-123.png', 'logo-02.svg', 'screen-02.png', 'googleplay-shot-12.webp', 'x-profile.jpg',
+    'youtube-icon.png', 'linkedin-profile.webp', 'threads-shot-3.png', 'pinterest-icon.jpg',
+    'logo.png', 'logo-01.jpg', 'screen-01.svg', 'card.jpg', 'appstore-icon.gif', 'tiktok-icon.png', 'team-logo.svg', 'our-notes.md',
+  ];
   for (const tool of tools) {
+    const kind = tool.out.replaces.brand;
+    const named = new RegExp(`^(?:${kind.names})$`);
+    for (const name of names) assert.equal(named.test(name), runFile.test(name), `${tool.name}: ${name}`);
+
     const baseDir = mkdtempSync(path.join(os.tmpdir(), 'makersmcp-kit-'));
     try {
       const brand = path.join(baseDir, 'film', 'brand');
-      for (const file of ['brand.json', ...tool.out.replaces.brand.files, ...listed]) {
+      for (const file of ['brand.json', ...kind.files, ...listed]) {
         mkdirSync(path.dirname(path.join(brand, file)), { recursive: true });
         writeFileSync(path.join(brand, file), file === 'brand.json' ? JSON.stringify(marker) : 'x');
       }
-      const call = () => buildCommand(tool, { url: 'https://acme.com', source: 'https://acme.com', out_dir: 'film' }, { baseDir, installed: new Map() });
-      assert.ok(call().args.includes('--out'), tool.name);
+      const call = address => () => buildCommand(tool, { url: address, source: address, out_dir: 'film' }, { baseDir, installed: new Map() });
+      const store = 'https://apps.apple.com/us/app/acme/id1234567890';
+      assert.ok(call(store)().args.includes('--out'), tool.name);
       writeFileSync(path.join(brand, 'our-notes.md'), '# Our notes\n');
-      assert.throws(call, /film\/brand holds our-notes\.md, which its brand\.json does not list/, tool.name);
-      // easybrandkit, making a kit again in that folder, deletes every one of them and keeps the note.
+      // For an App Store page, launch-film may delete all of brand/.
+      assert.throws(call(store), /film\/brand holds our-notes\.md, which its brand\.json does not list/, tool.name);
+      // For a website, easybrandkit makes the kit again in it and keeps the note.
+      assert.ok(call('https://acme.com')().args.includes('--out'), tool.name);
+      // easybrandkit, making a kit again in that folder, deletes every one of the kit's files and keeps the note.
       prepareDir(brand);
       assert.deepEqual(readdirSync(brand), ['our-notes.md'], tool.name);
     } finally {
