@@ -47,10 +47,11 @@ A kit is a command line tool with its own repository and npm package. makersmcp 
 - `out`: the folder the kit writes to, with the kit's `flag` for it and a `name` like `easybrandkit-{host}`. `{host}` is the address's host without www, `{dir:param}` is a file's folder and `{stem:param}` its name without the extension. Without a flag, the folder is only reported. `otherwise` is used without the flag when `name` cannot be filled, like `{host}` when the tool was given a file.
 - `docs`: Markdown files in the folder to return with the result.
 - `check`: the kit exits with 1 when a check fails. That is a normal result, not an error.
+- `report`: for a check, what the kit writes once the check has run: `"stdout"` or a file in the folder, like `CHECK.md`. When the kit exits with 1 without writing it in this run, the check could not run, and the job failed. Every check needs one, since kits also exit with 1 on their own errors.
 - `uses`: flags that take another kit's script, like `{ "--easybrandkit": "easybrandkit" }`, so a kit runs the copy makersmcp already has.
 - `readOnly`: the tool writes nothing.
 
-makersmcp adds `out_dir` and `wait_seconds` to every tool. It starts the kit, sends each line the kit writes to stderr as progress, and returns the kit's stdout as the summary, with the folder, its files and the docs. A kit that takes longer than `wait_seconds` keeps running, and the tool returns a `job_id` for `wait_for_job`.
+makersmcp adds `out_dir` and `wait_seconds` to every tool. It starts the kit, sends each line the kit writes to stderr as progress, and returns the kit's stdout as the summary, with the folder, its files and the docs. A kit that takes longer than `wait_seconds` keeps running, and the tool returns a `job_id` for `wait_for_job`. When a kit fails, the agent gets what it said on stderr: for an argument error (exit code 2), the reason without the usage text after it.
 
 Each kit runs in a process group of its own, with the browser and ffmpeg it starts, under a small supervisor (`dist/supervise.js`). `cancel_job` stops the group, and so does the supervisor once makersmcp is gone, however it ended.
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,7 +9,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildCommand } from '../dist/args.js';
 import { DRAFT_2020_12 } from '../dist/schema-dialect.js';
-import { LocalBackend, createMcpServer, expandHome, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
+import { LocalBackend, createMcpServer, expandHome, failureText, loadKitDefinitions, validateKitDefinition } from '../dist/server.js';
 import { defaultOutDir } from '../dist/setup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -60,7 +60,7 @@ test('tools/list has the installed kits, the core tools and 2020-12 schemas', as
     const { tools } = await client.listTools();
     const names = tools.map(tool => tool.name).sort();
     assert.deepEqual(names, [
-      'cancel_job', 'check_setup', 'fake_check', 'fake_file', 'fake_make', 'list_jobs', 'other_make', 'wait_for_job',
+      'cancel_job', 'check_setup', 'fake_check', 'fake_file', 'fake_make', 'fake_report', 'list_jobs', 'other_make', 'wait_for_job',
     ]);
     for (const tool of tools) assert.equal(tool.inputSchema.$schema, DRAFT_2020_12);
     const make = tools.find(tool => tool.name === 'fake_make');
@@ -302,6 +302,61 @@ test('~ is the home folder in the folder settings and in out_dir', () => {
   }
   const command = buildCommand(definitions[0].tools[0], { url: 'https://example.com', out_dir: '~/brand' }, { baseDir: fixtures, installed: new Map() });
   assert.equal(command.folder, path.join(os.homedir(), 'brand'));
+});
+
+test('an argument error keeps the kit\'s reason and leaves out its usage text', async () => {
+  await withClient({}, async client => {
+    const result = await client.callTool({ name: 'fake_make', arguments: { url: 'https://usage.example.com' } });
+    assert.equal(result.isError, true);
+    assert.match(text(result), /failed after \d+ s \(exit code 2\)\n\nOpening https:\/\/usage\.example\.com\.\.\.\nfakekit: --count takes 1 to 5\n\nJob ID/);
+    assert.doesNotMatch(text(result), /Usage:|--option-/);
+    assert.equal(result.structuredContent.last_line, undefined);
+  });
+});
+
+test('a long log keeps its first lines and its last ones', async () => {
+  await withClient({}, async client => {
+    const result = await client.callTool({ name: 'fake_make', arguments: { url: 'https://noisy.example.com' } });
+    assert.equal(result.isError, true);
+    assert.match(text(result), /fakekit: the first step/);
+    assert.match(text(result), /\(\d+ more lines\)/);
+    assert.match(text(result), /step 60\.\.\.\nfakekit: gave up after step 60/);
+  });
+  assert.equal(failureText('a\nb\n', 1), 'a\nb');
+  // Only an argument error drops what follows a Usage: line.
+  assert.equal(failureText('kit: bad value\n\nUsage: kit <url>\n  --x\n', 2), 'kit: bad value');
+  assert.equal(failureText('Usage: kit <url>\n', 2), 'Usage: kit <url>');
+  assert.equal(failureText('step\nUsage: kit\nkit: broke\n', 1), 'step\nUsage: kit\nkit: broke');
+});
+
+test('a check that cannot run is an error, not a failed check', async () => {
+  await withClient({}, async client => {
+    const broken = await client.callTool({ name: 'fake_check', arguments: { url: 'https://broken.example.com' } });
+    assert.equal(broken.isError, true);
+    assert.equal(broken.structuredContent.status, 'failed');
+    assert.equal(broken.structuredContent.passed, undefined);
+    assert.match(text(broken), /fakekit: https:\/\/broken\.example\.com could not be read\nThe check could not run: the kit wrote no report\./);
+  });
+});
+
+test('a check with a report file counts only a report it wrote this run', async (t) => {
+  await withClient({}, async (client, outDir) => {
+    const folder = path.join(outDir, 'fakekit-check-broken.example.com');
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, 'REPORT.md'), '# PASS\n\nfrom an earlier run\n');
+    const stale = await client.callTool({ name: 'fake_report', arguments: { url: 'https://broken.example.com' } });
+    assert.equal(stale.isError, true);
+    assert.match(text(stale), /The check could not run: the kit wrote no REPORT\.md\./);
+    assert.doesNotMatch(text(stale), /from an earlier run/);
+
+    const bad = await client.callTool({ name: 'fake_report', arguments: { url: 'https://bad.example.com' } });
+    assert.notEqual(bad.isError, true);
+    assert.equal(bad.structuredContent.passed, false);
+    assert.match(text(bad), /failed the check[\s\S]*### REPORT\.md\n\n# FAIL/);
+
+    const good = await client.callTool({ name: 'fake_report', arguments: { url: 'https://good.example.com' } });
+    assert.equal(good.structuredContent.passed, true);
+  });
 });
 
 test('closing the server stops a running kit and the processes it started', async () => {

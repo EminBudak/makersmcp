@@ -57,6 +57,11 @@ export interface ToolDefinition {
   docs?: string[];
   /** Exit code 1 is a failed check, a normal result, not an error. */
   check?: boolean;
+  /**
+   * For a check: what the kit writes once the check has run, "stdout" or a file in the
+   * folder. Exit code 1 without it means the check could not run, and the job failed.
+   */
+  report?: string;
   readOnly?: boolean;
   /** Flags that take another kit's script, like { "--easybrandkit": "easybrandkit" }. */
   uses?: Record<string, string>;
@@ -91,6 +96,11 @@ const PARAM_TYPES = new Set<ParamType>([
 ]);
 const NAME = /^[a-z][a-z0-9_]*$/;
 const RESERVED_PARAMS = new Set(['out_dir', 'wait_seconds']);
+
+/** A path that stays inside the folder it is read from, like brand or stills/STILLS.md. */
+function staysInside(relative: string): boolean {
+  return Boolean(relative) && !path.isAbsolute(relative) && !relative.split(/[\\/]/).includes('..');
+}
 
 export const KITS_DIR = fileURLToPath(new URL('../kits/', import.meta.url));
 
@@ -128,6 +138,12 @@ export function validateKitDefinition(definition: KitDefinition, where = definit
     for (const arg of tool.args) {
       const match = /^\{(\w+)\}$/.exec(arg);
       if (match && !tool.params[match[1]]) fail(`${tool.name}: args use {${match[1]}}, which is not a parameter`);
+    }
+    if (tool.report !== undefined) {
+      if (!tool.check) fail(`${tool.name}: only a check has a report`);
+      if (tool.report !== 'stdout' && (!tool.out || !staysInside(tool.report))) {
+        fail(`${tool.name}: report is "stdout" or a file in the tool's folder`);
+      }
     }
   }
 }

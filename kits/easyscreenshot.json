@@ -57,6 +57,7 @@
       "description": "Checks the screenshots a web app manifest lists against Chrome's rules for its richer install dialog, without a browser. Passes or lists what needs fixing.",
       "args": ["--pwa-check", "{manifest}"],
       "check": true,
+      "report": "stdout",
       "readOnly": true,
       "params": {
         "manifest": { "type": "url_or_path", "required": true, "description": "The manifest's file or address, or the site's address." }

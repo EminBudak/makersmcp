@@ -27,13 +27,27 @@
     {
       "name": "fake_check",
       "title": "Fake check",
-      "description": "Passes or fails a check.",
+      "description": "Passes or fails a check, with its report on stdout.",
       "args": ["check", "{url}"],
       "check": true,
+      "report": "stdout",
       "readOnly": true,
       "params": {
         "url": { "type": "url", "required": true, "description": "An address." }
       }
+    },
+    {
+      "name": "fake_report",
+      "title": "Fake report",
+      "description": "Passes or fails a check, with its report in REPORT.md.",
+      "args": ["check", "{url}"],
+      "out": { "flag": "--out", "name": "fakekit-check-{host}" },
+      "check": true,
+      "report": "REPORT.md",
+      "params": {
+        "url": { "type": "url", "required": true, "description": "An address." }
+      },
+      "docs": ["REPORT.md"]
     },
     {
       "name": "fake_file",

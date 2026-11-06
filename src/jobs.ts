@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type JobStatus = 'running' | 'done' | 'failed' | 'canceled';
@@ -16,6 +17,8 @@ export interface JobSpec {
   folder?: string;
   docs?: string[];
   check?: boolean;
+  /** For a check: what it writes once it has run, "stdout" or a file in the folder (ToolDefinition.report). */
+  report?: string;
 }
 
 const STDOUT_LIMIT = 256 * 1024;
@@ -30,6 +33,16 @@ const SUPERVISOR = fileURLToPath(new URL('./supervise.js', import.meta.url));
 export class FolderBusyError extends Error {
   constructor(readonly job: Job) {
     super(`${job.id} (${job.spec.tool}) is still writing to ${job.spec.folder}`);
+  }
+}
+
+/** What a file is now, to tell whether a run wrote it: empty when it is not there. */
+function stamp(file: string): string {
+  try {
+    const stat = statSync(file);
+    return stat.isFile() ? `${stat.ino}:${stat.size}:${stat.mtimeMs}` : '';
+  } catch {
+    return '';
   }
 }
 
@@ -62,6 +75,19 @@ export class Job extends EventEmitter {
       this.endedAt = Date.now();
       settle();
       this.emit('end');
+    };
+
+    // A check's report as it was before the run, so one an earlier run left is not taken for this one's.
+    const reportFile = spec.check && spec.report && spec.report !== 'stdout' && spec.folder
+      ? path.join(spec.folder, spec.report)
+      : undefined;
+    const reportBefore = reportFile ? stamp(reportFile) : '';
+    const checkRan = (): boolean => {
+      if (!spec.report) return true;
+      if (spec.report === 'stdout') return this.stdout.trim() !== '';
+      if (!reportFile) return false;
+      const now = stamp(reportFile);
+      return now !== '' && now !== reportBefore;
     };
 
     try {
@@ -104,8 +130,12 @@ export class Job extends EventEmitter {
     this.child.on('close', (code, signal) => {
       if (this.canceling) return end('canceled', code);
       if (signal) this.note(`Stopped by ${signal}.`);
-      const passed = code === 0 || (code === 1 && spec.check === true);
-      end(passed ? 'done' : 'failed', code);
+      if (code === 0) return end('done', code);
+      if (code === 1 && spec.check) {
+        if (checkRan()) return end('done', code);
+        this.note(`The check could not run: the kit wrote ${spec.report === 'stdout' ? 'no report' : `no ${spec.report}`}.`);
+      }
+      end('failed', code);
     });
   }
 

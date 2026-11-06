@@ -19,6 +19,7 @@ import { setupReport } from './setup.js';
 
 const MAX_FILES = 200;
 const MAX_DOC_CHARS = 40_000;
+const HEAD_LINES = 5;
 const TAIL_LINES = 30;
 
 /** The files in a folder, relative to it, in name order, at most MAX_FILES. */
@@ -60,6 +61,26 @@ function tail(text: string, lines = TAIL_LINES): string {
   return text.trim().split(/\r?\n/).slice(-lines).join('\n');
 }
 
+/**
+ * What a failed kit said on stderr, for the agent. An argument error (exit code 2) gives
+ * its reason first and the kit's usage after it: the reason is kept, the usage is not.
+ * A long log keeps its first lines and its last ones, where an error usually is.
+ */
+export function failureText(stderr: string, exitCode: number | null): string {
+  let lines = stderr.split(/\r?\n/);
+  if (exitCode === 2) {
+    const usage = lines.findIndex(line => /^Usage:/.test(line));
+    if (usage > 0 && lines.slice(0, usage).some(line => line.trim())) lines = lines.slice(0, usage);
+  }
+  while (lines.length && !lines[0]!.trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1]!.trim()) lines.pop();
+  if (lines.length > HEAD_LINES + TAIL_LINES + 1) {
+    const cut = lines.length - HEAD_LINES - TAIL_LINES;
+    lines = [...lines.slice(0, HEAD_LINES), `(${cut} more lines)`, ...lines.slice(-TAIL_LINES)];
+  }
+  return lines.join('\n');
+}
+
 /** A job of this machine as the tools show it. */
 export function viewJob(job: Job): JobView {
   const { spec } = job;
@@ -73,10 +94,11 @@ export function viewJob(job: Job): JobView {
     exitCode: job.exitCode,
     elapsedSeconds: job.elapsedSeconds,
     ...(spec.folder ? { folder: spec.folder } : {}),
-    ...(job.lastLine ? { lastLine: job.lastLine } : {}),
+    // A failed kit's last line is often the end of its usage text: the failure says what went wrong.
+    ...(job.lastLine && job.status !== 'failed' ? { lastLine: job.lastLine } : {}),
   };
   if (job.status === 'failed') {
-    view.failure = [tail(job.stderr), tail(job.stdout, 10)].filter(Boolean).join('\n\n');
+    view.failure = [failureText(job.stderr, job.exitCode), tail(job.stdout, 10)].filter(Boolean).join('\n\n');
   }
   if (job.status === 'done') {
     // What the kit said at the end: its summary on stdout, or its last lines when it writes only to stderr.
@@ -151,6 +173,7 @@ export class LocalBackend implements KitBackend {
         folder: command.folder,
         docs: tool.docs,
         check: tool.check,
+        report: tool.report,
       }));
     } catch (error) {
       if (error instanceof FolderBusyError) {

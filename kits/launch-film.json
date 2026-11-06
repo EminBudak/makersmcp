@@ -76,6 +76,7 @@
       "args": ["check", "{film}"],
       "out": { "flag": "--out", "name": "{dir:film}/check" },
       "check": true,
+      "report": "CHECK.md",
       "params": {
         "film": { "type": "path", "required": true, "description": "The video to check, like film.mp4." },
         "expect": { "type": "string", "flag": "--expect", "description": "The size and frame rate it should have, like 1920x1080@30." },
