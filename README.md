@@ -20,8 +20,6 @@ More kits are on the way.
 
 ## Set it up
 
-The first release on npm is on its way, so until it is out the `npx` setups below will not find the package; [run it from source](#run-it-from-source) works today. Star the repo to hear when it ships.
-
 You need Node 22 or newer and the Chrome, Chromium, Edge or Brave you already have. Demo videos, launch films and music also need ffmpeg. Every setup runs `npx -y makersmcp@0.1.0`: keep the version in it, since `npx` can otherwise go on using an older copy it cached.
 
 Then ask your agent for what you need, like "make a launch film for linear.app" or "get the brand kit and the fonts of stripe.com".
