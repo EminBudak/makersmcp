@@ -100,9 +100,12 @@ export async function describeSetup(options: MakersMcpOptions = {}): Promise<str
 
 function instructions(context: ToolContext): string {
   if (context.backend.where === 'hosted') {
+    // Each parameter's own text says what it takes; this only must not promise more.
     return 'MakersMCP runs open source kits for you on its servers: brand kits, fonts, screenshots, '
-      + 'demo videos, launch films and more, each from a website or a file. Give files as https links, '
-      + 'or as job:<job_id>/<path> for a file an earlier job saved. Every tool returns links to the '
+      + 'demo videos, launch films and more, each from a website or a file. A file an earlier job saved '
+      + 'goes in as job:<job_id>/<path>, so the files it names come with it: give a film.json or a brand '
+      + 'kit that way. Other files go as https links where a parameter takes one, and a parameter that '
+      + 'takes an address or a file reads any link as the address. Every tool returns links to the '
       + 'files it made, which work for a few days, and the kit\'s own notes. A tool that is still working '
       + 'after wait_seconds returns a job_id: call wait_for_job with it, never the same tool again.';
   }

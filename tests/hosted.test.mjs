@@ -232,3 +232,14 @@ test('hosted, the tool descriptions speak of the server, not of the agent\'s mac
     assert.match(byName.check_pwa_screenshots.inputSchema.properties.manifest.description, /Give an https link to the file/);
   });
 });
+
+test('hosted, the instructions do not promise that any file can be a link', async () => {
+  await withRealKits(async client => {
+    const instructions = client.getInstructions();
+    assert.doesNotMatch(instructions, /Give files as https links/);
+    // A film.json from a link would come alone, and make_launch_stills reads a link as the website.
+    assert.match(instructions, /A file an earlier job saved goes in as job:<job_id>\/<path>, so the files it names come with it: give a film\.json or a brand kit that way\./);
+    assert.match(instructions, /a parameter that takes an address or a file reads any link as the address\./);
+    assert.doesNotMatch(instructions, /this machine/);
+  });
+});
