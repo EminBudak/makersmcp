@@ -90,6 +90,7 @@ async function withHosted(callback) {
     await client.close();
     await server.close();
   }
+  return backend;
 }
 
 const text = result => result.content.map(item => item.text).join('\n');
@@ -139,7 +140,7 @@ test('a hosted file param refuses a local path, and a job the service refuses is
 });
 
 test('the core tools ask the hosted backend, and an unknown job says where to look', async () => {
-  await withHosted(async (client, backend) => {
+  const backend = await withHosted(async (client, backend) => {
     await client.callTool({ name: 'fake_make', arguments: { url: 'https://example.com/', wait_seconds: 0 } });
     const waited = await client.callTool({ name: 'wait_for_job', arguments: { job_id: 'job1', wait_seconds: 5 } });
     assert.equal(waited.structuredContent.status, 'done');
@@ -152,4 +153,6 @@ test('the core tools ask the hosted backend, and an unknown job says where to lo
     assert.match(text(setup), /^hosted \d+\.\d+\.\d+: fakekit$/);
     assert.equal(backend.closed, false);
   });
+  // Closing the server tells the backend.
+  assert.equal(backend.closed, true);
 });

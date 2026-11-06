@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 import { parseArgs } from 'node:util';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createMcpServer, describeSetup, version, type MakersMcpOptions } from './server.js';
+import { describeSetup, serveStdio, version, type MakersMcpOptions } from './server.js';
 
 const HELP = `Usage: makersmcp [options]
 
@@ -76,8 +75,7 @@ try {
     console.log(await describeSetup(options));
     process.exit(0);
   }
-  const server = createMcpServer(options);
-  await server.connect(new StdioServerTransport());
+  await serveStdio(options);
   console.error(`makersmcp ${version} running on stdio`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

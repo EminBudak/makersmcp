@@ -145,7 +145,7 @@ In a client's settings, the same goes at the end of `args`, like `["-y", "makers
 
 Every tool saves its files in a folder and returns the folder, the files in it and the kit's own notes, like BRAND.md. The folders go where makersmcp starts, which is your project for a coding agent, or `~/makersmcp` when it can't write there. Choose another place with `--out <dir>` or `MAKERSMCP_OUT`, or give a tool its own `out_dir`.
 
-A long job, like rendering a film, keeps going after the tool returns. The tool then gives back a `job_id`, and your agent calls `wait_for_job` with it until the job ends. `list_jobs` and `cancel_job` do what they say, and `check_setup` tells what is missing when a kit fails to start.
+A long job, like rendering a film, keeps going after the tool returns. The tool then gives back a `job_id`, and your agent calls `wait_for_job` with it until the job ends. `list_jobs` and `cancel_job` do what they say, and `check_setup` tells what is missing when a kit fails to start. When the client closes makersmcp, or makersmcp ends some other way, its jobs stop too, with the browsers and ffmpeg they started.
 
 ## When something fails
 
@@ -165,14 +165,12 @@ A long job, like rendering a film, keeps going after the tool returns. The tool 
 ## Use it in your own server
 
 ```js
-import { createMcpServer } from 'makersmcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from 'makersmcp';
 
-const server = createMcpServer({ kits: ['easybrandkit', 'launch-film'], outDir: '/srv/makersmcp' });
-await server.connect(new StdioServerTransport());
+await serveStdio({ kits: ['easybrandkit', 'launch-film'], outDir: '/srv/makersmcp' });
 ```
 
-`createMcpServer` takes `kits`, `outDir`, `kitPaths`, `definitions` and `backend`, and works over any MCP transport. The backend decides where the jobs run. The default, `LocalBackend`, runs them on this machine and stops them when the transport closes. A service can pass its own `KitBackend` ([src/backend.ts](src/backend.ts)) to run them on its machines; the tools then take links instead of paths and return links to the files. `loadKitDefinitions`, `validateKitDefinition`, `buildCommand` and `describeSetup` are exported too.
+`serveStdio` serves on stdin and stdout and ends the process when the client goes away. `createMcpServer` takes the same options, `kits`, `outDir`, `kitPaths`, `definitions` and `backend`, and works over any MCP transport; close the server when the client is gone, since the stdio transport alone never notices. The backend decides where the jobs run. The default, `LocalBackend`, runs them on this machine and stops them when the server closes or the process ends. A service can also pass its own `KitBackend` ([src/backend.ts](src/backend.ts)) to run them on its machines; the tools then take links instead of paths and return links to the files. `loadKitDefinitions`, `validateKitDefinition`, `buildCommand` and `describeSetup` are exported too.
 
 ## Add a kit
 

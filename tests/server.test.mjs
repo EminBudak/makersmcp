@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -230,4 +231,38 @@ test('{stem:...} and {dir:...} fill folder names from files', () => {
   const baseDir = path.join(fixtures, 'fakekit');
   const command = buildCommand(tool, { track: 'fake.js' }, { baseDir, installed: new Map() });
   assert.deepEqual(command.args, [path.join(baseDir, 'fake.js'), '--out', path.join(baseDir, 'musicfit-fake')]);
+});
+
+const alive = pid => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code !== 'ESRCH';
+  }
+};
+async function until(check, ms = 5000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (check()) return true;
+    await sleep(50);
+  }
+  return check();
+}
+
+test('closing the server stops a running kit and the processes it started', async () => {
+  let pids;
+  await withClient({}, async (client, outDir) => {
+    const started = await client.callTool({ name: 'fake_make', arguments: { url: 'https://tree.example.com', wait_seconds: 0 } });
+    assert.equal(started.structuredContent.status, 'running');
+    const file = path.join(outDir, 'fakekit-tree.example.com', 'pids.json');
+    assert.ok(await until(() => existsSync(file)), 'the kit started its browser');
+    pids = JSON.parse(readFileSync(file, 'utf8'));
+    assert.ok(alive(pids.kit) && alive(pids.browser));
+  });
+  try {
+    assert.ok(await until(() => !alive(pids.kit) && !alive(pids.browser)), 'the kit and its browser are gone');
+  } finally {
+    for (const pid of Object.values(pids)) if (alive(pid)) process.kill(pid, 'SIGKILL');
+  }
 });

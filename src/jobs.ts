@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { fileURLToPath } from 'node:url';
 
 export type JobStatus = 'running' | 'done' | 'failed' | 'canceled';
 
@@ -20,6 +21,9 @@ const STDOUT_LIMIT = 256 * 1024;
 const STDERR_LIMIT = 64 * 1024;
 const KEEP_FINISHED = 50;
 const KILL_AFTER_MS = 5000;
+
+// Every kit runs under this script, in a process group of its own: see supervise.ts.
+const SUPERVISOR = fileURLToPath(new URL('./supervise.js', import.meta.url));
 
 /** Another job is writing to the same folder. */
 export class FolderBusyError extends Error {
@@ -60,10 +64,12 @@ export class Job extends EventEmitter {
     };
 
     try {
-      this.child = spawn(process.execPath, [spec.script, ...spec.args], {
+      this.child = spawn(process.execPath, [SUPERVISOR, spec.script, ...spec.args], {
         cwd: spec.cwd,
         env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        // stdin stays open and unused: it closes when this process ends, however it ends,
+        // and the supervisor then stops the kit.
+        stdio: ['pipe', 'pipe', 'pipe'],
         // Its own process group on POSIX, so a cancel also stops its Chrome and ffmpeg.
         detached: process.platform !== 'win32',
         windowsHide: true,
@@ -74,6 +80,9 @@ export class Job extends EventEmitter {
       return;
     }
 
+    this.child.stdin!.on('error', () => {
+      // The supervisor is gone; it only ever reads the end of this pipe.
+    });
     this.child.stdout!.setEncoding('utf8');
     this.child.stdout!.on('data', (chunk: string) => {
       if (this.stdout.length < STDOUT_LIMIT) this.stdout += chunk.slice(0, STDOUT_LIMIT - this.stdout.length);
@@ -118,12 +127,12 @@ export class Job extends EventEmitter {
     });
   }
 
-  /** Stops the kit and everything it started. */
-  cancel(): Promise<void> {
+  /** Stops the kit and everything it started: SIGTERM, then SIGKILL after killAfterMs. */
+  cancel(killAfterMs = KILL_AFTER_MS): Promise<void> {
     if (this.status !== 'running') return this.finished;
     this.canceling = true;
     killTree(this.child, 'SIGTERM');
-    const timer = setTimeout(() => killTree(this.child, 'SIGKILL'), KILL_AFTER_MS);
+    const timer = setTimeout(() => killTree(this.child, 'SIGKILL'), killAfterMs);
     return this.finished.finally(() => clearTimeout(timer));
   }
 
@@ -152,7 +161,10 @@ function killTree(child: ChildProcess | undefined, signal: NodeJS.Signals): void
   }
 }
 
-/** The jobs of one makersmcp process. They end with it. */
+/**
+ * The jobs of one makersmcp process. They end with it: closeAll stops them when the
+ * client goes away, and each kit's supervisor stops it when this process is gone.
+ */
 export class JobManager {
   private readonly jobs = new Map<string, Job>();
 
@@ -175,11 +187,10 @@ export class JobManager {
     return [...this.jobs.values()];
   }
 
-  /** Stops every running job, when the client goes away. */
-  closeAll(): void {
-    for (const job of this.jobs.values()) {
-      if (job.status === 'running') void job.cancel();
-    }
+  /** Stops every running job, when the client goes away. Resolves once they have all ended. */
+  closeAll(killAfterMs = KILL_AFTER_MS): Promise<void> {
+    const running = this.list().filter(job => job.status === 'running');
+    return Promise.all(running.map(job => job.cancel(killAfterMs))).then(() => undefined);
   }
 
   private prune(): void {

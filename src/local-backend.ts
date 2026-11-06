@@ -182,6 +182,6 @@ export class LocalBackend implements KitBackend {
   }
 
   close(): void {
-    this.jobs.closeAll();
+    void this.jobs.closeAll();
   }
 }

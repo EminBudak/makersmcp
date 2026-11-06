@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { isAvailable, type AvailableKit, type KitBackend } from './backend.js';
 import { loadKitDefinitions, type KitDefinition } from './kits.js';
 import { LocalBackend } from './local-backend.js';
@@ -116,8 +118,9 @@ function instructions(context: ToolContext): string {
 /**
  * An MCP server with a tool for each tool of each kit the backend can run and the
  * server turned on, plus wait_for_job, cancel_job, list_jobs and check_setup. Connect
- * it to any transport. With the local backend, its running jobs stop when the
- * transport closes.
+ * it to any transport. With the local backend, its running jobs stop when the server
+ * or the transport closes, and with this process. On stdio, use serveStdio: the stdio
+ * transport does not close when the client goes away.
  */
 export function createMcpServer(options: MakersMcpOptions = {}): McpServer {
   const { context, available } = prepare(options);
@@ -140,5 +143,70 @@ export function createMcpServer(options: MakersMcpOptions = {}): McpServer {
 
   const connect = server.connect.bind(server);
   server.connect = (transport: Transport) => connect(withDraft2020(transport));
+  return server;
+}
+
+const EXIT_SIGNALS = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;
+// A client sends SIGTERM 2 s after it closes stdin, and SIGKILL 2 s after that.
+const DRAIN_MS = 1000;
+const EXIT_MS = 1500;
+
+/**
+ * Serves makersmcp on this process's stdin and stdout, the way an MCP client starts it,
+ * and ends the process once the client is gone: when stdin ends (after answering the
+ * requests already sent, for up to a second), when stdout breaks, or on SIGTERM, SIGINT
+ * or SIGHUP. The running jobs stop with it. The stdio transport alone never notices the
+ * client leave, so a server on stdio should start this way.
+ */
+export async function serveStdio(options: MakersMcpOptions = {}): Promise<McpServer> {
+  const server = createMcpServer(options);
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+
+  // The requests the client still waits on, so one that closes stdin right after its
+  // last request still gets the answer.
+  const waiting = new Set<string | number>();
+  let drained: (() => void) | undefined;
+  const receive = transport.onmessage;
+  transport.onmessage = (message: JSONRPCMessage) => {
+    if ('method' in message && 'id' in message) waiting.add(message.id);
+    receive?.(message);
+  };
+  const send = transport.send.bind(transport);
+  transport.send = async (message: JSONRPCMessage) => {
+    try {
+      await send(message);
+    } finally {
+      if (!('method' in message) && 'id' in message && message.id !== undefined && waiting.delete(message.id) && !waiting.size) {
+        drained?.();
+      }
+    }
+  };
+
+  let closing = false;
+  const close = (code: number, drain: boolean) => {
+    if (closing) return;
+    closing = true;
+    const exit = () => process.exit(code);
+    setTimeout(exit, EXIT_MS).unref();
+    let stopped = false;
+    // Closing the server stops the jobs. Their supervisors also stop them once this
+    // process is gone, so it need not wait for them.
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      server.close().then(exit, exit);
+    };
+    if (drain && waiting.size) {
+      drained = stop;
+      setTimeout(stop, DRAIN_MS).unref();
+    } else {
+      stop();
+    }
+  };
+  process.stdin.on('end', () => close(0, true));
+  process.stdin.on('close', () => close(0, true));
+  process.stdout.on('error', () => close(0, false));
+  for (const [signal, number] of Object.entries(EXIT_SIGNALS)) process.on(signal, () => close(128 + number, false));
   return server;
 }
